@@ -1,2 +1,8 @@
 bin/
 tmp/
+.env
+build/
+refresharr
+refresharr-cli
+refresharr-cli-final
+refresharr-final

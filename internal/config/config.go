@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // Config holds all configuration for the application
@@ -34,6 +36,9 @@ type RadarrConfig struct {
 
 // LoadConfig loads configuration from environment variables with sensible defaults
 func LoadConfig() (*Config, error) {
+	// Load .env file if it exists (ignore errors - .env file is optional)
+	_ = godotenv.Load()
+
 	config := &Config{
 		// Default values
 		RequestTimeout:  30 * time.Second,
