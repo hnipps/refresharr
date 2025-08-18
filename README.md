@@ -1,10 +1,10 @@
-# RefreshArr
+# Refresharr
 
 A modular Go service that replicates and enhances the functionality of cleaning up missing file references in *arr applications (Sonarr, Radarr, etc.).
 
 ## Overview
 
-RefreshArr addresses a common issue where *arr applications maintain database records of media files that no longer exist on disk. This can happen due to:
+Refresharr addresses a common issue where *arr applications maintain database records of media files that no longer exist on disk. This can happen due to:
 - Manual file deletion
 - Storage failures
 - File moves/reorganization
@@ -37,7 +37,7 @@ The service automatically:
 The service is designed with modularity in mind to support multiple *arr applications:
 
 ```
-RefreshArr/
+Refresharr/
 ├── cmd/refresharr/          # CLI application entry point
 ├── internal/
 │   ├── arr/                 # Core interfaces and implementations
@@ -146,7 +146,7 @@ docker run -e SONARR_API_KEY="your-key" -e SONARR_URL="http://sonarr:8989" refre
 ## Sample Output
 
 ```
-[INFO] Starting RefreshArr v1.0.0 - Missing File Cleanup Service
+[INFO] Starting Refresharr v1.0.0 - Missing File Cleanup Service
 [INFO] ================================================
 [INFO] ✅ Successfully connected to Sonarr
 [INFO] Step 1: Fetching all series...
