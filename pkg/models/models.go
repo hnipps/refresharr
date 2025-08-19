@@ -16,7 +16,9 @@ type Series struct {
 // Movie represents a movie in Radarr
 type Movie struct {
 	MediaItem
-	Year int `json:"year,omitempty"`
+	Year        int  `json:"year,omitempty"`
+	HasFile     bool `json:"hasFile"`
+	MovieFileID *int `json:"movieFileId,omitempty"`
 }
 
 // Episode represents a TV episode

@@ -178,6 +178,21 @@ func (c *SonarrClient) UpdateEpisode(ctx context.Context, episode models.Episode
 	return nil
 }
 
+// GetMovieFile is not applicable for Sonarr (returns error)
+func (c *SonarrClient) GetMovieFile(ctx context.Context, fileID int) (*models.MovieFile, error) {
+	return nil, fmt.Errorf("GetMovieFile is not supported by Sonarr client")
+}
+
+// DeleteMovieFile is not applicable for Sonarr (returns error)
+func (c *SonarrClient) DeleteMovieFile(ctx context.Context, fileID int) error {
+	return fmt.Errorf("DeleteMovieFile is not supported by Sonarr client")
+}
+
+// UpdateMovie is not applicable for Sonarr (returns error)
+func (c *SonarrClient) UpdateMovie(ctx context.Context, movie models.Movie) error {
+	return fmt.Errorf("UpdateMovie is not supported by Sonarr client")
+}
+
 // TriggerRefresh triggers a missing episode search
 func (c *SonarrClient) TriggerRefresh(ctx context.Context) error {
 	command := map[string]string{

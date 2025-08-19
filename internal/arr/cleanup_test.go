@@ -13,8 +13,8 @@ import (
 // Mock implementations for testing
 
 type mockClient struct {
-	name                    string
-	testConnectionError     error
+	name                   string
+	testConnectionError    error
 	allSeries              []models.Series
 	allSeriesError         error
 	episodes               map[int][]models.Episode // seriesID -> episodes
@@ -80,6 +80,18 @@ func (m *mockClient) UpdateEpisode(ctx context.Context, episode models.Episode) 
 	}
 	m.updatedEpisodes = append(m.updatedEpisodes, episode)
 	return nil
+}
+
+func (m *mockClient) GetMovieFile(ctx context.Context, fileID int) (*models.MovieFile, error) {
+	return nil, errors.New("GetMovieFile not implemented in mock")
+}
+
+func (m *mockClient) DeleteMovieFile(ctx context.Context, fileID int) error {
+	return errors.New("DeleteMovieFile not implemented in mock")
+}
+
+func (m *mockClient) UpdateMovie(ctx context.Context, movie models.Movie) error {
+	return errors.New("UpdateMovie not implemented in mock")
 }
 
 func (m *mockClient) TriggerRefresh(ctx context.Context) error {
@@ -149,7 +161,7 @@ type mockProgressReporter struct {
 	deletedRecords       []int
 	errors               []error
 	finishCalled         bool
-	finalStats          models.CleanupStats
+	finalStats           models.CleanupStats
 }
 
 func (m *mockProgressReporter) StartSeries(seriesID int, seriesName string, current, total int) {
@@ -158,6 +170,11 @@ func (m *mockProgressReporter) StartSeries(seriesID int, seriesName string, curr
 
 func (m *mockProgressReporter) StartEpisode(episodeID int, seasonNum, episodeNum int) {
 	m.episodesStarted = append(m.episodesStarted, "episode")
+}
+
+func (m *mockProgressReporter) StartMovie(movieID int, movieName string, current, total int) {
+	// For testing purposes, we can track movie starts similar to series
+	m.seriesStarted = append(m.seriesStarted, movieName)
 }
 
 func (m *mockProgressReporter) ReportMissingFile(filePath string) {

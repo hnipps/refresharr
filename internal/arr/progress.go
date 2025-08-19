@@ -28,6 +28,13 @@ func (r *ConsoleProgressReporter) StartEpisode(episodeID int, seasonNum, episode
 	r.logger.Info("  Checking S%dE%d (Episode ID: %d)", seasonNum, episodeNum, episodeID)
 }
 
+// StartMovie reports the start of processing a movie
+func (r *ConsoleProgressReporter) StartMovie(movieID int, movieName string, current, total int) {
+	r.logger.Info("")
+	r.logger.Info("Processing movie %d/%d (ID: %d)", current, total, movieID)
+	r.logger.Info("Movie: %s", movieName)
+}
+
 // ReportMissingFile reports that a file is missing
 func (r *ConsoleProgressReporter) ReportMissingFile(filePath string) {
 	r.logger.Warn("    ❌ MISSING: %s", filePath)

@@ -2,6 +2,7 @@ package arr
 
 import (
 	"context"
+
 	"github.com/hnipps/refresharr/pkg/models"
 )
 
@@ -31,6 +32,15 @@ type Client interface {
 	// UpdateEpisode updates an episode's metadata
 	UpdateEpisode(ctx context.Context, episode models.Episode) error
 
+	// GetMovieFile returns movie file details (Radarr specific)
+	GetMovieFile(ctx context.Context, fileID int) (*models.MovieFile, error)
+
+	// DeleteMovieFile deletes a movie file record (Radarr specific)
+	DeleteMovieFile(ctx context.Context, fileID int) error
+
+	// UpdateMovie updates a movie's metadata (Radarr specific)
+	UpdateMovie(ctx context.Context, movie models.Movie) error
+
 	// TriggerRefresh triggers a refresh/rescan operation
 	TriggerRefresh(ctx context.Context) error
 }
@@ -48,6 +58,9 @@ type CleanupService interface {
 
 	// CleanupMissingFilesForSeries performs cleanup for specific series
 	CleanupMissingFilesForSeries(ctx context.Context, seriesIDs []int) (*models.CleanupResult, error)
+
+	// CleanupMissingFilesForMovies performs cleanup for specific movies
+	CleanupMissingFilesForMovies(ctx context.Context, movieIDs []int) (*models.CleanupResult, error)
 }
 
 // Logger defines the interface for logging operations
@@ -62,6 +75,7 @@ type Logger interface {
 type ProgressReporter interface {
 	StartSeries(seriesID int, seriesName string, current, total int)
 	StartEpisode(episodeID int, seasonNum, episodeNum int)
+	StartMovie(movieID int, movieName string, current, total int)
 	ReportMissingFile(filePath string)
 	ReportDeletedRecord(fileID int)
 	ReportError(err error)

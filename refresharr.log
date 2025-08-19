@@ -1,0 +1,32 @@
+2025/08/19 14:58:06 [INFO] Starting RefreshArr - Missing File Cleanup Service
+2025/08/19 14:58:06 [INFO] Starting sonarr missing file cleanup...
+2025/08/19 14:58:06 [INFO] ================================================
+2025/08/19 14:58:06 [INFO] ✅ Successfully connected to Sonarr
+2025/08/19 14:58:06 [INFO] Step 1: Fetching all series...
+2025/08/19 14:58:06 [INFO] Found 206 series
+2025/08/19 14:58:06 [INFO] 
+2025/08/19 14:58:06 [INFO] Processing series 1/206 (ID: 1)
+2025/08/19 14:58:06 [INFO] Series: Series 1
+2025/08/19 14:58:07 [INFO] 
+2025/08/19 14:58:07 [INFO] Processing series 2/206 (ID: 2)
+2025/08/19 14:58:07 [INFO] Series: Series 2
+2025/08/19 14:58:07 [INFO] 
+2025/08/19 14:58:07 [INFO] Processing series 3/206 (ID: 3)
+2025/08/19 14:58:07 [INFO] Series: Series 3
+2025/08/19 14:58:08 [INFO] 
+2025/08/19 14:58:08 [INFO] Processing series 4/206 (ID: 6)
+2025/08/19 14:58:08 [INFO] Series: Series 6
+2025/08/19 14:58:08 [INFO] 
+2025/08/19 14:58:08 [INFO] Processing series 5/206 (ID: 7)
+2025/08/19 14:58:08 [INFO] Series: Series 7
+2025/08/19 14:58:09 [INFO] 
+2025/08/19 14:58:09 [INFO] Processing series 6/206 (ID: 8)
+2025/08/19 14:58:09 [INFO] Series: Series 8
+2025/08/19 14:58:09 [INFO]   Checking S3E12 (Episode ID: 783)
+2025/08/19 14:58:09 [WARN]     ❌ MISSING: /mnt/data/media/tv/Futurama (1999) [tvdb-73871]/Futurama (1999) - S03E12 - Insane in the Mainframe [DSNP WEBDL-1080p][AAC 2.0][h264]-DUSKLiGHT.mkv
+2025/08/19 14:58:09 [INFO]     🗑️  Deleting episode file record 1709...
+2025/08/19 14:58:20 [INFO]     ✅ Successfully deleted episode file record (ID: 1709)
+2025/08/19 14:58:20 [WARN]     ⚠️  Failed to update episode 783: failed to update episode 783, status: 400
+2025/08/19 14:58:21 [INFO]   Checking S3E13 (Episode ID: 784)
+2025/08/19 14:58:21 [WARN]     ❌ MISSING: /mnt/data/media/tv/Futurama (1999) [tvdb-73871]/Futurama (1999) - S03E13 - Bendin in the Wind [DSNP WEBDL-1080p][AAC 2.0][h264]-DUSKLiGHT.mkv
+2025/08/19 14:58:21 [INFO]     🗑️  Deleting episode file record 1708...

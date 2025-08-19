@@ -18,16 +18,18 @@ The service automatically:
 
 ## Features
 
-### Current (Sonarr)
-- ✅ **Sonarr Support**: Full API integration with Sonarr v3
+### Current
+- ✅ **Sonarr Support**: Full API integration with Sonarr v3 for TV shows
+- ✅ **Radarr Support**: Full API integration with Radarr v3 for movies
+- ✅ **Multi-Service**: Run cleanup for both services simultaneously or individually
 - ✅ **Dry Run Mode**: Preview changes before applying them
 - ✅ **Detailed Logging**: Comprehensive progress reporting and statistics
 - ✅ **Configurable**: Environment variables and command-line options
 - ✅ **Safe Operations**: Validates connections and handles errors gracefully
 - ✅ **Rate Limiting**: Configurable delays to avoid API overload
+- ✅ **Selective Processing**: Process specific series or movies by ID
 
 ### Planned (Future)
-- 🔄 **Radarr Support**: Extend to work with Radarr for movies
 - 🔄 **Web UI**: Browser-based interface for easier management
 - 🔄 **Scheduling**: Automated cleanup runs via cron-like scheduling
 - 🔄 **Notifications**: Discord/Slack/Email notifications for cleanup results
@@ -88,31 +90,47 @@ This design makes it easy to add support for Radarr by implementing the `Client`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SONARR_URL` | `http://127.0.0.1:8989` | Sonarr base URL |
-| `SONARR_API_KEY` | *(required)* | Sonarr API key |
+| `SONARR_URL` | `http://127.0.0.1:8989` | Sonarr base URL (auto-set if API key provided) |
+| `SONARR_API_KEY` | *(optional)* | Sonarr API key |
+| `RADARR_URL` | `http://127.0.0.1:7878` | Radarr base URL (auto-set if API key provided) |
+| `RADARR_API_KEY` | *(optional)* | Radarr API key |
 | `REQUEST_TIMEOUT` | `30s` | HTTP request timeout |
 | `REQUEST_DELAY` | `500ms` | Delay between API requests |
 | `CONCURRENT_LIMIT` | `5` | Max concurrent operations |
 | `LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARN, ERROR) |
 | `DRY_RUN` | `false` | Enable dry run mode |
 
-### Getting Your Sonarr API Key
+**Note**: At least one service (Sonarr or Radarr) must be configured with both URL and API key.
 
+### Getting Your API Keys
+
+**Sonarr API Key:**
 1. Open Sonarr web interface
 2. Go to **Settings** → **General**
 3. Copy the **API Key** value
 4. Set it as `SONARR_API_KEY` environment variable
+
+**Radarr API Key:**
+1. Open Radarr web interface
+2. Go to **Settings** → **General**
+3. Copy the **API Key** value
+4. Set it as `RADARR_API_KEY` environment variable
 
 ## Usage
 
 ### Basic Usage
 
 ```bash
-# Set your API key
-export SONARR_API_KEY="your-api-key-here"
+# Set your API keys (at least one required)
+export SONARR_API_KEY="your-sonarr-api-key-here"
+export RADARR_API_KEY="your-radarr-api-key-here"
 
-# Run cleanup
+# Run cleanup for all configured services
 ./refresharr
+
+# Run cleanup for specific service only
+./refresharr --service sonarr
+./refresharr --service radarr
 ```
 
 ### Command Line Options
@@ -121,14 +139,19 @@ export SONARR_API_KEY="your-api-key-here"
 # Dry run (no changes made)
 ./refresharr --dry-run
 
-# Custom Sonarr instance
-./refresharr --sonarr-url "http://192.168.1.100:8989" --sonarr-api-key "your-key"
+# Run for both services
+./refresharr --service both
+
+# Custom instances
+./refresharr --sonarr-url "http://192.168.1.100:8989" --sonarr-api-key "your-sonarr-key"
+./refresharr --radarr-url "http://192.168.1.100:7878" --radarr-api-key "your-radarr-key"
 
 # Debug logging
 ./refresharr --log-level DEBUG
 
-# Process specific series only
-./refresharr --series-ids "123,456,789"
+# Process specific series or movies only
+./refresharr --service sonarr --series-ids "123,456,789"
+./refresharr --service radarr --movie-ids "123,456,789"
 
 # Show help
 ./refresharr --help
@@ -140,13 +163,26 @@ export SONARR_API_KEY="your-api-key-here"
 ### Docker Usage (Future)
 
 ```bash
+# Run with Sonarr only
 docker run -e SONARR_API_KEY="your-key" -e SONARR_URL="http://sonarr:8989" refresharr
+
+# Run with Radarr only
+docker run -e RADARR_API_KEY="your-key" -e RADARR_URL="http://radarr:7878" refresharr
+
+# Run with both services
+docker run \
+  -e SONARR_API_KEY="your-sonarr-key" -e SONARR_URL="http://sonarr:8989" \
+  -e RADARR_API_KEY="your-radarr-key" -e RADARR_URL="http://radarr:7878" \
+  refresharr
 ```
 
 ## Sample Output
 
+**Sonarr Cleanup:**
 ```
 [INFO] Starting Refresharr v1.0.0 - Missing File Cleanup Service
+[INFO] ================================================
+[INFO] Starting sonarr missing file cleanup...
 [INFO] ================================================
 [INFO] ✅ Successfully connected to Sonarr
 [INFO] Step 1: Fetching all series...
@@ -172,6 +208,31 @@ docker run -e SONARR_API_KEY="your-key" -e SONARR_URL="http://sonarr:8989" refre
 [INFO] 🎉 Cleanup completed successfully!
 ```
 
+**Radarr Cleanup:**
+```
+[INFO] Starting radarr missing file cleanup...
+[INFO] ================================================
+[INFO] ✅ Successfully connected to Radarr
+[INFO] Step 1: Fetching all movies...
+[INFO] Found 250 movies
+
+[INFO] Processing movie 1/250 (ID: 456)
+[INFO] Movie: The Matrix
+[WARN]     ❌ MISSING: /media/movies/The Matrix (1999)/The Matrix (1999).mkv
+[INFO]     🗑️  Deleting movie file record 3001...
+[INFO]     ✅ Successfully deleted movie file record (ID: 3001)
+
+[INFO] ================================================
+[INFO] Cleanup Summary:
+[INFO]   Total items checked: 250
+[INFO]   Missing files found: 12
+[INFO]   Records deleted: 12
+[INFO] 
+[INFO] 🔄 Triggering refresh to update status...
+[INFO] ✅ Refresh triggered successfully
+[INFO] 🎉 Cleanup completed successfully!
+```
+
 ## Development
 
 ### Project Structure
@@ -183,24 +244,30 @@ The codebase follows Go best practices with clear separation of concerns:
 - **`pkg/`**: Public library code (models)
 - **`main.go`**: Simple entry point for basic usage
 
-### Adding Radarr Support
+### Extending Support
 
-To add Radarr support, implement the `Client` interface:
+The modular architecture makes it easy to add support for other *arr applications. The `Client` interface defines the contract that any new service must implement:
 
 ```go
-type RadarrClient struct {
-    // ... implementation
+type Client interface {
+    GetName() string
+    TestConnection(ctx context.Context) error
+    
+    // TV Shows (Sonarr)
+    GetAllSeries(ctx context.Context) ([]models.Series, error)
+    GetEpisodesForSeries(ctx context.Context, seriesID int) ([]models.Episode, error)
+    GetEpisodeFile(ctx context.Context, fileID int) (*models.EpisodeFile, error)
+    DeleteEpisodeFile(ctx context.Context, fileID int) error
+    UpdateEpisode(ctx context.Context, episode models.Episode) error
+    
+    // Movies (Radarr)
+    GetAllMovies(ctx context.Context) ([]models.Movie, error)
+    GetMovieFile(ctx context.Context, fileID int) (*models.MovieFile, error)
+    DeleteMovieFile(ctx context.Context, fileID int) error
+    UpdateMovie(ctx context.Context, movie models.Movie) error
+    
+    TriggerRefresh(ctx context.Context) error
 }
-
-func (c *RadarrClient) GetName() string {
-    return "radarr"
-}
-
-func (c *RadarrClient) GetAllMovies(ctx context.Context) ([]models.Movie, error) {
-    // Implement Radarr movie fetching
-}
-
-// ... other interface methods
 ```
 
 ### Testing
@@ -252,7 +319,7 @@ The Go rewrite provides:
 
 ## Roadmap
 
-- [ ] Radarr support
+- [x] Radarr support
 - [ ] Web UI interface  
 - [ ] Docker containerization
 - [ ] Automated scheduling
@@ -261,3 +328,5 @@ The Go rewrite provides:
 - [ ] Webhook notifications
 - [ ] Prometheus metrics
 - [ ] Multi-instance support
+- [ ] Lidarr support (music)
+- [ ] Readarr support (books)

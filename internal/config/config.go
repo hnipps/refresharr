@@ -49,12 +49,22 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// Load Sonarr configuration
-	config.Sonarr.URL = getEnvOrDefault("SONARR_URL", "http://127.0.0.1:8989")
+	config.Sonarr.URL = getEnvOrDefault("SONARR_URL", "")
 	config.Sonarr.APIKey = getEnvOrDefault("SONARR_API_KEY", "")
 
-	// Load Radarr configuration (for future use)
-	config.Radarr.URL = getEnvOrDefault("RADARR_URL", "http://127.0.0.1:7878")
+	// Set default Sonarr URL if API key is provided but URL is not
+	if config.Sonarr.APIKey != "" && config.Sonarr.URL == "" {
+		config.Sonarr.URL = "http://127.0.0.1:8989"
+	}
+
+	// Load Radarr configuration
+	config.Radarr.URL = getEnvOrDefault("RADARR_URL", "")
 	config.Radarr.APIKey = getEnvOrDefault("RADARR_API_KEY", "")
+
+	// Set default Radarr URL if API key is provided but URL is not
+	if config.Radarr.APIKey != "" && config.Radarr.URL == "" {
+		config.Radarr.URL = "http://127.0.0.1:7878"
+	}
 
 	// Load global settings
 	if timeoutStr := os.Getenv("REQUEST_TIMEOUT"); timeoutStr != "" {
@@ -88,13 +98,30 @@ func LoadConfig() (*Config, error) {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	// For now, we only validate Sonarr since that's what we're implementing first
-	if c.Sonarr.URL == "" {
-		return fmt.Errorf("SONARR_URL is required")
+	// Check if at least one service is configured
+	hasSonarr := c.Sonarr.URL != "" && c.Sonarr.APIKey != ""
+	hasRadarr := c.Radarr.URL != "" && c.Radarr.APIKey != ""
+
+	if !hasSonarr && !hasRadarr {
+		return fmt.Errorf("at least one service must be configured (Sonarr or Radarr)")
 	}
 
-	if c.Sonarr.APIKey == "" {
-		return fmt.Errorf("SONARR_API_KEY is required")
+	// Validate Sonarr configuration if provided
+	if c.Sonarr.URL != "" && c.Sonarr.APIKey == "" {
+		return fmt.Errorf("SONARR_API_KEY is required when SONARR_URL is provided")
+	}
+
+	if c.Sonarr.APIKey != "" && c.Sonarr.URL == "" {
+		return fmt.Errorf("SONARR_URL is required when SONARR_API_KEY is provided")
+	}
+
+	// Validate Radarr configuration if provided
+	if c.Radarr.URL != "" && c.Radarr.APIKey == "" {
+		return fmt.Errorf("RADARR_API_KEY is required when RADARR_URL is provided")
+	}
+
+	if c.Radarr.APIKey != "" && c.Radarr.URL == "" {
+		return fmt.Errorf("RADARR_URL is required when RADARR_API_KEY is provided")
 	}
 
 	if c.RequestTimeout <= 0 {

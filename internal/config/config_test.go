@@ -11,7 +11,6 @@ func TestLoadConfig_WithDefaults(t *testing.T) {
 	clearTestEnv()
 
 	// Set only required variables
-	os.Setenv("SONARR_URL", "http://test-sonarr:8989")
 	os.Setenv("SONARR_API_KEY", "test-api-key")
 	defer clearTestEnv()
 
@@ -20,9 +19,9 @@ func TestLoadConfig_WithDefaults(t *testing.T) {
 		t.Fatalf("LoadConfig() failed: %v", err)
 	}
 
-	// Test required fields
-	if config.Sonarr.URL != "http://test-sonarr:8989" {
-		t.Errorf("Expected Sonarr URL 'http://test-sonarr:8989', got '%s'", config.Sonarr.URL)
+	// Test required fields - URL should default when API key is provided
+	if config.Sonarr.URL != "http://127.0.0.1:8989" {
+		t.Errorf("Expected Sonarr URL 'http://127.0.0.1:8989', got '%s'", config.Sonarr.URL)
 	}
 	if config.Sonarr.APIKey != "test-api-key" {
 		t.Errorf("Expected Sonarr API key 'test-api-key', got '%s'", config.Sonarr.APIKey)
@@ -100,26 +99,38 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 			envVars: map[string]string{"SONARR_URL": "http://test:8989"},
 			wantErr: true,
 			errCheck: func(err error) bool {
-				return err.Error() == "configuration validation failed: SONARR_API_KEY is required"
+				return err.Error() == "configuration validation failed: at least one service must be configured (Sonarr or Radarr)"
 			},
 		},
 		{
-			name: "empty SONARR_API_KEY", 
+			name: "empty SONARR_API_KEY",
 			envVars: map[string]string{
 				"SONARR_URL":     "http://test:8989",
 				"SONARR_API_KEY": "",
 			},
 			wantErr: true,
 			errCheck: func(err error) bool {
-				return err.Error() == "configuration validation failed: SONARR_API_KEY is required"
+				return err.Error() == "configuration validation failed: at least one service must be configured (Sonarr or Radarr)"
 			},
 		},
 		{
-			name: "no env vars set",
+			name:    "no env vars set",
 			envVars: map[string]string{},
 			wantErr: true,
 			errCheck: func(err error) bool {
-				return err.Error() == "configuration validation failed: SONARR_API_KEY is required"
+				return err.Error() == "configuration validation failed: at least one service must be configured (Sonarr or Radarr)"
+			},
+		},
+		{
+			name: "SONARR_URL provided without API key",
+			envVars: map[string]string{
+				"SONARR_URL":     "http://test:8989",
+				"SONARR_API_KEY": "test-key",
+				"RADARR_URL":     "http://test:7878",
+			},
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return err.Error() == "configuration validation failed: RADARR_API_KEY is required when RADARR_URL is provided"
 			},
 		},
 	}
