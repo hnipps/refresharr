@@ -81,6 +81,11 @@ func (c *SonarrClient) GetAllMovies(ctx context.Context) ([]models.Movie, error)
 	return nil, fmt.Errorf("GetAllMovies is not supported by Sonarr client")
 }
 
+// GetMovie is not applicable for Sonarr (returns error)
+func (c *SonarrClient) GetMovie(ctx context.Context, movieID int) (*models.Movie, error) {
+	return nil, fmt.Errorf("GetMovie is not supported by Sonarr client")
+}
+
 // GetEpisodesForSeries returns all episodes for a given series
 func (c *SonarrClient) GetEpisodesForSeries(ctx context.Context, seriesID int) ([]models.Episode, error) {
 	path := fmt.Sprintf("/api/v3/episode?seriesId=%d", seriesID)
@@ -147,31 +152,44 @@ func (c *SonarrClient) DeleteEpisodeFile(ctx context.Context, fileID int) error 
 
 // UpdateEpisode updates an episode's metadata
 func (c *SonarrClient) UpdateEpisode(ctx context.Context, episode models.Episode) error {
-	// Reset the file reference
-	episode.HasFile = false
-	episode.EpisodeFileID = nil
-
+	// First, fetch the current episode data to ensure we have the complete object
 	path := fmt.Sprintf("/api/v3/episode/%d", episode.ID)
+	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to fetch current episode %d data: %w", episode.ID, err)
+	}
+	defer resp.Body.Close()
 
-	// Create a minimal update payload
-	updateData := map[string]interface{}{
-		"hasFile":       false,
-		"episodeFileId": nil,
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to fetch current episode %d data, status: %d", episode.ID, resp.StatusCode)
 	}
 
-	jsonData, err := json.Marshal(updateData)
+	var currentEpisode models.Episode
+	if err := json.NewDecoder(resp.Body).Decode(&currentEpisode); err != nil {
+		return fmt.Errorf("failed to decode current episode %d data: %w", episode.ID, err)
+	}
+
+	// Update the file reference fields
+	currentEpisode.HasFile = false
+	currentEpisode.EpisodeFileID = nil
+
+	// Marshal the complete episode object
+	jsonData, err := json.Marshal(currentEpisode)
 	if err != nil {
 		return fmt.Errorf("failed to marshal episode update: %w", err)
 	}
 
-	resp, err := c.makeRequest(ctx, "PUT", path, bytes.NewBuffer(jsonData))
+	// Send the PUT request with the complete episode object
+	resp, err = c.makeRequest(ctx, "PUT", path, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to update episode %d: %w", episode.ID, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to update episode %d, status: %d", episode.ID, resp.StatusCode)
+		// Get response body for better error reporting
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to update episode %d, status: %d, response: %s", episode.ID, resp.StatusCode, string(bodyBytes))
 	}
 
 	c.logger.Debug("Successfully updated episode %d", episode.ID)

@@ -252,22 +252,36 @@ func TestRadarrClient_UpdateMovie_Success(t *testing.T) {
 		MovieFileID: nil,
 	}
 
+	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		expectedPath := "/api/v3/movie/1"
 		if r.URL.Path != expectedPath {
 			t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
 		}
-		if r.Method != "PUT" {
-			t.Errorf("Expected PUT method, got '%s'", r.Method)
-		}
 
-		// Verify that we received a request body (but don't parse it for simplicity)
-		if r.ContentLength == 0 {
-			t.Error("Expected request body, got empty body")
+		callCount++
+		if callCount == 1 {
+			// First call should be GET to fetch current movie data
+			if r.Method != "GET" {
+				t.Errorf("Expected GET method on first call, got '%s'", r.Method)
+			}
+			// Return the current movie data
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(movie)
+		} else if callCount == 2 {
+			// Second call should be PUT to update the movie
+			if r.Method != "PUT" {
+				t.Errorf("Expected PUT method on second call, got '%s'", r.Method)
+			}
+			// Verify that we received a request body
+			if r.ContentLength == 0 {
+				t.Error("Expected request body, got empty body")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(movie)
+		} else {
+			t.Errorf("Unexpected third call to UpdateMovie")
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(movie)
 	}))
 	defer server.Close()
 
@@ -283,6 +297,10 @@ func TestRadarrClient_UpdateMovie_Success(t *testing.T) {
 	err := client.UpdateMovie(ctx, movie)
 	if err != nil {
 		t.Errorf("UpdateMovie() failed: %v", err)
+	}
+
+	if callCount != 2 {
+		t.Errorf("Expected exactly 2 calls, got %d", callCount)
 	}
 }
 

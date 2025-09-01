@@ -157,7 +157,7 @@ func TestCleanupStats(t *testing.T) {
 		TotalItemsChecked: 100,
 		MissingFiles:      15,
 		DeletedRecords:    10,
-		Errors:           2,
+		Errors:            2,
 	}
 
 	if stats.TotalItemsChecked != 100 {
@@ -179,7 +179,7 @@ func TestCleanupResult(t *testing.T) {
 		TotalItemsChecked: 50,
 		MissingFiles:      5,
 		DeletedRecords:    3,
-		Errors:           0,
+		Errors:            0,
 	}
 
 	messages := []string{"File not found", "Operation completed"}
@@ -209,7 +209,7 @@ func TestCleanupResultFailure(t *testing.T) {
 		TotalItemsChecked: 30,
 		MissingFiles:      8,
 		DeletedRecords:    5,
-		Errors:           3,
+		Errors:            3,
 	}
 
 	result := CleanupResult{
@@ -234,7 +234,7 @@ func TestZeroValues(t *testing.T) {
 	}
 
 	var stats CleanupStats
-	if stats.TotalItemsChecked != 0 || stats.MissingFiles != 0 || 
+	if stats.TotalItemsChecked != 0 || stats.MissingFiles != 0 ||
 		stats.DeletedRecords != 0 || stats.Errors != 0 {
 		t.Error("Expected zero values for CleanupStats")
 	}

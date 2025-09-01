@@ -32,13 +32,14 @@ func main() {
 	// Create progress reporter
 	progressReporter := arr.NewConsoleProgressReporter(logger)
 
-	// Create cleanup service
-	cleanupService := arr.NewCleanupService(
+	// Create cleanup service with concurrency support
+	cleanupService := arr.NewCleanupServiceWithConcurrency(
 		sonarrClient,
 		fileChecker,
 		logger,
 		progressReporter,
 		cfg.RequestDelay,
+		cfg.ConcurrentLimit,
 		cfg.DryRun,
 	)
 

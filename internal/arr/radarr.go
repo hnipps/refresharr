@@ -81,6 +81,32 @@ func (c *RadarrClient) GetAllMovies(ctx context.Context) ([]models.Movie, error)
 	return movies, nil
 }
 
+// GetMovie returns a single movie by ID from Radarr
+func (c *RadarrClient) GetMovie(ctx context.Context, movieID int) (*models.Movie, error) {
+	path := fmt.Sprintf("/api/v3/movie/%d", movieID)
+	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch movie %d: %w", movieID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("movie %d not found", movieID)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch movie %d, status: %d", movieID, resp.StatusCode)
+	}
+
+	var movie models.Movie
+	if err := json.NewDecoder(resp.Body).Decode(&movie); err != nil {
+		return nil, fmt.Errorf("failed to decode movie response for %d: %w", movieID, err)
+	}
+
+	c.logger.Debug("Fetched movie %d from Radarr", movieID)
+	return &movie, nil
+}
+
 // GetEpisodesForSeries is not applicable for Radarr (returns error)
 func (c *RadarrClient) GetEpisodesForSeries(ctx context.Context, seriesID int) ([]models.Episode, error) {
 	return nil, fmt.Errorf("GetEpisodesForSeries is not supported by Radarr client")
@@ -145,31 +171,44 @@ func (c *RadarrClient) DeleteMovieFile(ctx context.Context, fileID int) error {
 
 // UpdateMovie updates a movie's metadata
 func (c *RadarrClient) UpdateMovie(ctx context.Context, movie models.Movie) error {
-	// Reset the file reference
-	movie.HasFile = false
-	movie.MovieFileID = nil
-
+	// First, fetch the current movie data to ensure we have the complete object
 	path := fmt.Sprintf("/api/v3/movie/%d", movie.ID)
+	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to fetch current movie %d data: %w", movie.ID, err)
+	}
+	defer resp.Body.Close()
 
-	// Create a minimal update payload
-	updateData := map[string]interface{}{
-		"hasFile":     false,
-		"movieFileId": nil,
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to fetch current movie %d data, status: %d", movie.ID, resp.StatusCode)
 	}
 
-	jsonData, err := json.Marshal(updateData)
+	var currentMovie models.Movie
+	if err := json.NewDecoder(resp.Body).Decode(&currentMovie); err != nil {
+		return fmt.Errorf("failed to decode current movie %d data: %w", movie.ID, err)
+	}
+
+	// Update the file reference fields
+	currentMovie.HasFile = false
+	currentMovie.MovieFileID = nil
+
+	// Marshal the complete movie object
+	jsonData, err := json.Marshal(currentMovie)
 	if err != nil {
 		return fmt.Errorf("failed to marshal movie update: %w", err)
 	}
 
-	resp, err := c.makeRequest(ctx, "PUT", path, bytes.NewBuffer(jsonData))
+	// Send the PUT request with the complete movie object
+	resp, err = c.makeRequest(ctx, "PUT", path, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to update movie %d: %w", movie.ID, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to update movie %d, status: %d", movie.ID, resp.StatusCode)
+		// Get response body for better error reporting
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to update movie %d, status: %d, response: %s", movie.ID, resp.StatusCode, string(bodyBytes))
 	}
 
 	c.logger.Debug("Successfully updated movie %d", movie.ID)

@@ -86,9 +86,9 @@ func TestFileSystemChecker_IsReadable(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		path        string
-		expected    bool
+		name          string
+		path          string
+		expected      bool
 		skipOnWindows bool
 	}{
 		{
@@ -97,9 +97,9 @@ func TestFileSystemChecker_IsReadable(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:        "unreadable file",
-			path:        unreadableFile,
-			expected:    false,
+			name:          "unreadable file",
+			path:          unreadableFile,
+			expected:      false,
 			skipOnWindows: true, // Windows doesn't respect file permissions in the same way
 		},
 		{
@@ -142,7 +142,7 @@ func TestNewFileSystemChecker(t *testing.T) {
 
 	// Verify it implements the FileChecker interface by testing method calls
 	exists := checker.FileExists("/dev/null") // This path exists on Unix-like systems
-	_ = exists // We don't care about the result, just that the method exists
+	_ = exists                                // We don't care about the result, just that the method exists
 
 	readable := checker.IsReadable("/dev/null")
 	_ = readable // We don't care about the result, just that the method exists

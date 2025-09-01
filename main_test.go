@@ -32,7 +32,7 @@ func TestMain_RequiredEnvVars(t *testing.T) {
 	// This test mainly verifies that main() doesn't panic during initialization
 	// Since we can't easily test the full execution without a real Sonarr instance,
 	// we just test that configuration loading and component creation works
-	
+
 	// We can't actually run main() in a test easily since it calls os.Exit
 	// But we can test that the components can be created successfully
 	// This is a smoke test to ensure no obvious errors in initialization
@@ -51,13 +51,13 @@ func TestMain_MissingEnvVars(t *testing.T) {
 	// Clear environment variables to test error handling
 	originalEnv := make(map[string]string)
 	requiredVars := []string{"SONARR_URL", "SONARR_API_KEY", "DRY_RUN", "LOG_LEVEL"}
-	
+
 	// Save original values
 	for _, v := range requiredVars {
 		originalEnv[v] = os.Getenv(v)
 		os.Unsetenv(v)
 	}
-	
+
 	// Restore original values
 	defer func() {
 		for _, v := range requiredVars {
@@ -71,7 +71,7 @@ func TestMain_MissingEnvVars(t *testing.T) {
 	// We can't easily test main() directly due to os.Exit, but we know it should fail
 	// This test documents the expected behavior
 	t.Log("Configuration should fail without required environment variables")
-	
+
 	// This is more of a documentation test - in a real scenario,
 	// main() would exit with code 1 due to missing configuration
 }
@@ -80,14 +80,14 @@ func TestMain_MissingEnvVars(t *testing.T) {
 func TestComponentIntegration(t *testing.T) {
 	// This test verifies that all the major components can be created
 	// and connected together without errors
-	
+
 	// Set up test environment
 	os.Setenv("SONARR_URL", "http://localhost:8989")
 	os.Setenv("SONARR_API_KEY", "test-key")
 	os.Setenv("DRY_RUN", "true")
 	defer func() {
 		os.Unsetenv("SONARR_URL")
-		os.Unsetenv("SONARR_API_KEY") 
+		os.Unsetenv("SONARR_API_KEY")
 		os.Unsetenv("DRY_RUN")
 	}()
 
@@ -132,5 +132,3 @@ func TestComponentIntegration(t *testing.T) {
 	// All components created successfully
 	t.Log("All main components created successfully")
 }
-
-

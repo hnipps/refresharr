@@ -43,7 +43,7 @@ func TestStandardLogger_LogLevels(t *testing.T) {
 			messages: []string{
 				"debug message",
 				"info message",
-				"warn message", 
+				"warn message",
 				"error message",
 			},
 			expected: []string{
@@ -300,7 +300,7 @@ func TestConsoleProgressReporter_Finish(t *testing.T) {
 		TotalItemsChecked: 50,
 		MissingFiles:      5,
 		DeletedRecords:    3,
-		Errors:           1,
+		Errors:            1,
 	}
 
 	reporter.Finish(stats)
@@ -316,7 +316,7 @@ func TestConsoleProgressReporter_Finish(t *testing.T) {
 		t.Error("Expected total items checked to be mentioned")
 	}
 	if !strings.Contains(allMessages, "5") {
-		t.Error("Expected missing files count to be mentioned")  
+		t.Error("Expected missing files count to be mentioned")
 	}
 	if !strings.Contains(allMessages, "3") {
 		t.Error("Expected deleted records count to be mentioned")
@@ -339,7 +339,7 @@ func TestConsoleProgressReporter_FinishNoRecordsDeleted(t *testing.T) {
 		TotalItemsChecked: 50,
 		MissingFiles:      0,
 		DeletedRecords:    0,
-		Errors:           0,
+		Errors:            0,
 	}
 
 	reporter.Finish(stats)
@@ -360,5 +360,3 @@ func TestConsoleProgressReporter_FinishNoRecordsDeleted(t *testing.T) {
 		t.Errorf("Expected 0 warn messages, got %d", len(logger.warnMessages))
 	}
 }
-
-

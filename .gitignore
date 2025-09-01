@@ -6,3 +6,4 @@ refresharr
 refresharr-cli
 refresharr-cli-final
 refresharr-final
+*.log

@@ -117,13 +117,14 @@ func main() {
 			continue
 		}
 
-		// Create cleanup service
-		cleanupService := arr.NewCleanupService(
+		// Create cleanup service with concurrency support
+		cleanupService := arr.NewCleanupServiceWithConcurrency(
 			client,
 			fileChecker,
 			logger,
 			progressReporter,
 			cfg.RequestDelay,
+			cfg.ConcurrentLimit,
 			cfg.DryRun,
 		)
 

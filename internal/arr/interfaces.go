@@ -20,6 +20,9 @@ type Client interface {
 	// GetAllMovies returns all movies (Radarr specific - can be nil for Sonarr)
 	GetAllMovies(ctx context.Context) ([]models.Movie, error)
 
+	// GetMovie returns a single movie by ID (Radarr specific)
+	GetMovie(ctx context.Context, movieID int) (*models.Movie, error)
+
 	// GetEpisodesForSeries returns all episodes for a given series
 	GetEpisodesForSeries(ctx context.Context, seriesID int) ([]models.Episode, error)
 
@@ -78,6 +81,8 @@ type ProgressReporter interface {
 	StartMovie(movieID int, movieName string, current, total int)
 	ReportMissingFile(filePath string)
 	ReportDeletedRecord(fileID int)
+	ReportDeletedEpisodeRecord(fileID int)
+	ReportDeletedMovieRecord(fileID int)
 	ReportError(err error)
 	Finish(stats models.CleanupStats)
 }

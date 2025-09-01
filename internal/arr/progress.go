@@ -40,9 +40,19 @@ func (r *ConsoleProgressReporter) ReportMissingFile(filePath string) {
 	r.logger.Warn("    ❌ MISSING: %s", filePath)
 }
 
-// ReportDeletedRecord reports that a record was deleted
+// ReportDeletedRecord reports that a record was deleted (generic - deprecated, use specific methods)
 func (r *ConsoleProgressReporter) ReportDeletedRecord(fileID int) {
+	r.logger.Info("    ✅ Successfully deleted file record (ID: %d)", fileID)
+}
+
+// ReportDeletedEpisodeRecord reports that an episode file record was deleted
+func (r *ConsoleProgressReporter) ReportDeletedEpisodeRecord(fileID int) {
 	r.logger.Info("    ✅ Successfully deleted episode file record (ID: %d)", fileID)
+}
+
+// ReportDeletedMovieRecord reports that a movie file record was deleted
+func (r *ConsoleProgressReporter) ReportDeletedMovieRecord(fileID int) {
+	r.logger.Info("    ✅ Successfully deleted movie file record (ID: %d)", fileID)
 }
 
 // ReportError reports an error during processing

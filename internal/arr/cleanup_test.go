@@ -44,6 +44,10 @@ func (m *mockClient) GetAllMovies(ctx context.Context) ([]models.Movie, error) {
 	return nil, nil // Not implemented for this test
 }
 
+func (m *mockClient) GetMovie(ctx context.Context, movieID int) (*models.Movie, error) {
+	return nil, nil // Not implemented for this test
+}
+
 func (m *mockClient) GetEpisodesForSeries(ctx context.Context, seriesID int) ([]models.Episode, error) {
 	if m.episodesError != nil {
 		return nil, m.episodesError
@@ -182,6 +186,14 @@ func (m *mockProgressReporter) ReportMissingFile(filePath string) {
 }
 
 func (m *mockProgressReporter) ReportDeletedRecord(fileID int) {
+	m.deletedRecords = append(m.deletedRecords, fileID)
+}
+
+func (m *mockProgressReporter) ReportDeletedEpisodeRecord(fileID int) {
+	m.deletedRecords = append(m.deletedRecords, fileID)
+}
+
+func (m *mockProgressReporter) ReportDeletedMovieRecord(fileID int) {
 	m.deletedRecords = append(m.deletedRecords, fileID)
 }
 

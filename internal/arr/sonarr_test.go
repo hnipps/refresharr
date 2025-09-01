@@ -149,7 +149,7 @@ func TestSonarrClient_GetEpisodesForSeries_Success(t *testing.T) {
 		if r.URL.Path != expectedPath {
 			t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
 		}
-		
+
 		// Check query parameter
 		seriesID := r.URL.Query().Get("seriesId")
 		if seriesID != "10" {
@@ -259,22 +259,36 @@ func TestSonarrClient_UpdateEpisode_Success(t *testing.T) {
 		HasFile:       false,
 	}
 
+	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		expectedPath := "/api/v3/episode/1"
 		if r.URL.Path != expectedPath {
 			t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
 		}
-		if r.Method != "PUT" {
-			t.Errorf("Expected PUT method, got '%s'", r.Method)
-		}
 
-		// Verify that we received a request body (but don't parse it for simplicity)
-		if r.ContentLength == 0 {
-			t.Error("Expected request body, got empty body")
+		callCount++
+		if callCount == 1 {
+			// First call should be GET to fetch current episode data
+			if r.Method != "GET" {
+				t.Errorf("Expected GET method on first call, got '%s'", r.Method)
+			}
+			// Return the current episode data
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(episode)
+		} else if callCount == 2 {
+			// Second call should be PUT to update the episode
+			if r.Method != "PUT" {
+				t.Errorf("Expected PUT method on second call, got '%s'", r.Method)
+			}
+			// Verify that we received a request body
+			if r.ContentLength == 0 {
+				t.Error("Expected request body, got empty body")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(episode)
+		} else {
+			t.Errorf("Unexpected third call to UpdateEpisode")
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(episode)
 	}))
 	defer server.Close()
 
@@ -290,6 +304,10 @@ func TestSonarrClient_UpdateEpisode_Success(t *testing.T) {
 	err := client.UpdateEpisode(ctx, episode)
 	if err != nil {
 		t.Errorf("UpdateEpisode() failed: %v", err)
+	}
+
+	if callCount != 2 {
+		t.Errorf("Expected exactly 2 calls, got %d", callCount)
 	}
 }
 
@@ -400,5 +418,3 @@ func TestSonarrClient_GetAllMovies(t *testing.T) {
 		t.Error("Expected GetAllMovies() to return nil movies for Sonarr")
 	}
 }
-
-
