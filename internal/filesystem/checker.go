@@ -98,6 +98,27 @@ func (f *FileSystemChecker) FindBrokenSymlinks(rootDir string, extensions []stri
 	return brokenSymlinks, nil
 }
 
+// DeleteSymlink removes a symlink from the filesystem
+func (f *FileSystemChecker) DeleteSymlink(path string) error {
+	// Verify that the target is actually a symlink before deletion
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("failed to stat symlink %s: %w", path, err)
+	}
+
+	if info.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("path %s is not a symlink", path)
+	}
+
+	// Delete the symlink
+	err = os.Remove(path)
+	if err != nil {
+		return fmt.Errorf("failed to delete symlink %s: %w", path, err)
+	}
+
+	return nil
+}
+
 // hasTargetExtension checks if a file has one of the target extensions
 func hasTargetExtension(path string, extensions []string) bool {
 	if len(extensions) == 0 {

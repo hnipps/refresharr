@@ -167,6 +167,11 @@ func (m *mockFileChecker) FindBrokenSymlinks(rootDir string, extensions []string
 	return []string{}, nil
 }
 
+func (m *mockFileChecker) DeleteSymlink(path string) error {
+	// For testing, just return nil (can be expanded later for specific tests)
+	return nil
+}
+
 type mockLogger struct {
 	debugMessages []string
 	infoMessages  []string

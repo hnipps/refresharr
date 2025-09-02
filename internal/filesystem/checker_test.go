@@ -147,3 +147,117 @@ func TestNewFileSystemChecker(t *testing.T) {
 	readable := checker.IsReadable("/dev/null")
 	_ = readable // We don't care about the result, just that the method exists
 }
+
+func TestFileSystemChecker_DeleteSymlink(t *testing.T) {
+	checker := NewFileSystemChecker()
+
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "refresharr-symlink-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create a target file
+	targetFile := filepath.Join(tempDir, "target.txt")
+	if err := os.WriteFile(targetFile, []byte("target content"), 0644); err != nil {
+		t.Fatalf("Failed to create target file: %v", err)
+	}
+
+	// Create a valid symlink
+	validSymlink := filepath.Join(tempDir, "valid-symlink.txt")
+	if err := os.Symlink(targetFile, validSymlink); err != nil {
+		t.Skipf("Symlink creation not supported on this system: %v", err)
+	}
+
+	// Create a broken symlink
+	brokenSymlink := filepath.Join(tempDir, "broken-symlink.txt")
+	nonExistentTarget := filepath.Join(tempDir, "does-not-exist.txt")
+	if err := os.Symlink(nonExistentTarget, brokenSymlink); err != nil {
+		t.Skipf("Symlink creation not supported on this system: %v", err)
+	}
+
+	// Create a regular file (not a symlink)
+	regularFile := filepath.Join(tempDir, "regular.txt")
+	if err := os.WriteFile(regularFile, []byte("regular content"), 0644); err != nil {
+		t.Fatalf("Failed to create regular file: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		path        string
+		shouldError bool
+		errorText   string
+	}{
+		{
+			name:        "delete valid symlink",
+			path:        validSymlink,
+			shouldError: false,
+		},
+		{
+			name:        "delete broken symlink",
+			path:        brokenSymlink,
+			shouldError: false,
+		},
+		{
+			name:        "try to delete regular file",
+			path:        regularFile,
+			shouldError: true,
+			errorText:   "is not a symlink",
+		},
+		{
+			name:        "try to delete non-existent file",
+			path:        filepath.Join(tempDir, "does-not-exist.txt"),
+			shouldError: true,
+			errorText:   "failed to stat symlink",
+		},
+		{
+			name:        "empty path",
+			path:        "",
+			shouldError: true,
+			errorText:   "failed to stat symlink",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checker.DeleteSymlink(tt.path)
+
+			if tt.shouldError {
+				if err == nil {
+					t.Errorf("DeleteSymlink(%s) expected error but got nil", tt.path)
+				} else if tt.errorText != "" && !containsString(err.Error(), tt.errorText) {
+					t.Errorf("DeleteSymlink(%s) error = %v, expected to contain %s", tt.path, err, tt.errorText)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("DeleteSymlink(%s) unexpected error = %v", tt.path, err)
+				}
+
+				// Verify the symlink was actually deleted
+				if _, err := os.Lstat(tt.path); err == nil {
+					t.Errorf("DeleteSymlink(%s) did not delete the symlink", tt.path)
+				}
+			}
+		})
+	}
+}
+
+// Helper function to check if a string contains a substring
+func containsString(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || 
+		(len(s) > len(substr) && (
+			s[:len(substr)] == substr ||
+			s[len(s)-len(substr):] == substr ||
+			findSubstring(s, substr))))
+}
+
+// Simple substring search helper
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

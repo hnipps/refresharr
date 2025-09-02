@@ -898,6 +898,19 @@ func (s *CleanupServiceImpl) handleBrokenSymlink(ctx context.Context, symlinkPat
 
 	s.logger.Debug("Extracted TMDB ID %d from %s", tmdbID, symlinkPath)
 
+	// Delete the broken symlink before processing (if not in dry-run mode)
+	if !s.dryRun {
+		s.logger.Info("🗑️  Deleting broken symlink: %s", symlinkPath)
+		if err := s.fileChecker.DeleteSymlink(symlinkPath); err != nil {
+			s.logger.Error("Failed to delete broken symlink %s: %s", symlinkPath, err.Error())
+			stats.Errors++
+			return stats, fmt.Errorf("failed to delete broken symlink %s: %w", symlinkPath, err)
+		}
+		s.logger.Info("✅ Successfully deleted broken symlink: %s", symlinkPath)
+	} else {
+		s.logger.Info("🏃 DRY RUN: Would delete broken symlink: %s", symlinkPath)
+	}
+
 	// Check if movie already exists in Radarr collection
 	existingMovie, err := s.client.GetMovieByTMDBID(ctx, tmdbID)
 	if err == nil {
@@ -1065,6 +1078,19 @@ func (s *CleanupServiceImpl) handleBrokenSymlinkForSeries(ctx context.Context, s
 	}
 
 	s.logger.Debug("Extracted TVDB ID %d from %s", tvdbID, symlinkPath)
+
+	// Delete the broken symlink before processing (if not in dry-run mode)
+	if !s.dryRun {
+		s.logger.Info("🗑️  Deleting broken symlink: %s", symlinkPath)
+		if err := s.fileChecker.DeleteSymlink(symlinkPath); err != nil {
+			s.logger.Error("Failed to delete broken symlink %s: %s", symlinkPath, err.Error())
+			stats.Errors++
+			return stats, fmt.Errorf("failed to delete broken symlink %s: %w", symlinkPath, err)
+		}
+		s.logger.Info("✅ Successfully deleted broken symlink: %s", symlinkPath)
+	} else {
+		s.logger.Info("🏃 DRY RUN: Would delete broken symlink: %s", symlinkPath)
+	}
 
 	// Check if series already exists in Sonarr collection
 	existingSeries, err := s.client.GetSeriesByTVDBID(ctx, tvdbID)

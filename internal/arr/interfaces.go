@@ -78,6 +78,7 @@ type FileChecker interface {
 	IsReadable(path string) bool
 	FindBrokenSymlinks(rootDir string, extensions []string) ([]string, error)
 	IsSymlink(path string) bool
+	DeleteSymlink(path string) error
 }
 
 // CleanupService defines the interface for cleanup operations
