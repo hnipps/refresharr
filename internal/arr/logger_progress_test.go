@@ -360,3 +360,43 @@ func TestConsoleProgressReporter_FinishNoRecordsDeleted(t *testing.T) {
 		t.Errorf("Expected 0 warn messages, got %d", len(logger.warnMessages))
 	}
 }
+
+func TestConsoleProgressReporter_FinishMissingFilesButNoRecordsDeleted(t *testing.T) {
+	logger := &mockLogger{}
+	reporter := NewConsoleProgressReporter(logger)
+
+	// This is the scenario my fix addresses: missing files found but no records deleted
+	// (e.g., due to dry-run mode, broken symlinks, or deletion errors)
+	stats := models.CleanupStats{
+		TotalItemsChecked: 50,
+		MissingFiles:      38, // Files were detected as missing
+		DeletedRecords:    0,  // But no records were actually deleted
+		Errors:            0,
+	}
+
+	reporter.Finish(stats)
+
+	// Should log info messages
+	if len(logger.infoMessages) < 5 {
+		t.Errorf("Expected at least 5 info messages, got %d", len(logger.infoMessages))
+	}
+
+	// Should mention that missing files were found but no records deleted
+	allMessages := strings.Join(logger.infoMessages, " ")
+	if !strings.Contains(allMessages, "38") {
+		t.Error("Expected missing files count to be mentioned")
+	}
+	if !strings.Contains(allMessages, "Missing files found but no records deleted") {
+		t.Error("Expected message about missing files found but no records deleted")
+	}
+
+	// Should NOT say "nothing to clean" since missing files were found
+	if strings.Contains(allMessages, "nothing to clean") {
+		t.Error("Should not say 'nothing to clean' when missing files were found")
+	}
+
+	// Should not log warnings for errors since errors = 0
+	if len(logger.warnMessages) != 0 {
+		t.Errorf("Expected 0 warn messages, got %d", len(logger.warnMessages))
+	}
+}

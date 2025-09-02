@@ -73,8 +73,12 @@ func (r *ConsoleProgressReporter) Finish(stats models.CleanupStats) {
 	}
 	r.logger.Info("")
 
-	if stats.DeletedRecords > 0 {
-		r.logger.Info("🔄 Triggering refresh to update status...")
+	if stats.MissingFiles > 0 {
+		if stats.DeletedRecords > 0 {
+			r.logger.Info("🔄 Triggering refresh to update status...")
+		} else {
+			r.logger.Info("ℹ️  Missing files found but no records deleted (check dry-run mode or errors).")
+		}
 	} else {
 		r.logger.Info("ℹ️  No missing files found - nothing to clean up.")
 	}
