@@ -53,9 +53,31 @@ type CleanupStats struct {
 	Errors            int
 }
 
+// MissingFileEntry represents a single missing file entry in the report
+type MissingFileEntry struct {
+	MediaType   string `json:"mediaType"`             // "movie" or "series"
+	MediaName   string `json:"mediaName"`             // Movie title or series title
+	EpisodeName string `json:"episodeName,omitempty"` // Episode name (only for series)
+	Season      *int   `json:"season,omitempty"`      // Season number (only for series)
+	Episode     *int   `json:"episode,omitempty"`     // Episode number (only for series)
+	FilePath    string `json:"filePath"`              // Path to the missing file
+	FileID      int    `json:"fileId"`                // File ID in the database
+	ProcessedAt string `json:"processedAt"`           // Timestamp when processed
+}
+
+// MissingFilesReport represents a complete missing files report
+type MissingFilesReport struct {
+	GeneratedAt  string             `json:"generatedAt"`
+	RunType      string             `json:"runType"`     // "dry-run" or "real-run"
+	ServiceType  string             `json:"serviceType"` // "sonarr" or "radarr"
+	TotalMissing int                `json:"totalMissing"`
+	MissingFiles []MissingFileEntry `json:"missingFiles"`
+}
+
 // CleanupResult represents the result of a cleanup operation
 type CleanupResult struct {
 	Stats    CleanupStats
 	Messages []string
 	Success  bool
+	Report   *MissingFilesReport `json:"report,omitempty"` // Optional report data
 }

@@ -14,7 +14,9 @@ func TestLoadConfig_WithDefaults(t *testing.T) {
 	os.Setenv("SONARR_API_KEY", "test-api-key")
 	defer clearTestEnv()
 
-	config, err := LoadConfig()
+	dryRunFlag := false
+	noReportFlag := false
+	config, err := LoadConfigWithFlags(&dryRunFlag, &noReportFlag, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("LoadConfig() failed: %v", err)
 	}
@@ -58,7 +60,9 @@ func TestLoadConfig_WithCustomValues(t *testing.T) {
 	os.Setenv("DRY_RUN", "true")
 	defer clearTestEnv()
 
-	config, err := LoadConfig()
+	dryRunFlag := false
+	noReportFlag := false
+	config, err := LoadConfigWithFlags(&dryRunFlag, &noReportFlag, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("LoadConfig() failed: %v", err)
 	}
@@ -143,7 +147,9 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
 			}
 			defer clearTestEnv()
 
-			_, err := LoadConfig()
+			dryRunFlag := false
+			noReportFlag := false
+			_, err := LoadConfigWithFlags(&dryRunFlag, &noReportFlag, nil, nil, nil, nil, nil, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("LoadConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return

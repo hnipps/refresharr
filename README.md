@@ -28,6 +28,7 @@ The service automatically:
 - ✅ **Safe Operations**: Validates connections and handles errors gracefully
 - ✅ **Rate Limiting**: Configurable delays to avoid API overload
 - ✅ **Selective Processing**: Process specific series or movies by ID
+- ✅ **Missing Files Report**: Generate detailed JSON and terminal reports of missing files
 
 ### Planned (Future)
 - 🔄 **Web UI**: Browser-based interface for easier management
@@ -139,6 +140,9 @@ export RADARR_API_KEY="your-radarr-api-key-here"
 # Dry run (no changes made)
 ./refresharr --dry-run
 
+# Disable terminal report output (report still saved to file)
+./refresharr --no-report
+
 # Run for both services
 ./refresharr --service both
 
@@ -174,6 +178,93 @@ docker run \
   -e SONARR_API_KEY="your-sonarr-key" -e SONARR_URL="http://sonarr:8989" \
   -e RADARR_API_KEY="your-radarr-key" -e RADARR_URL="http://radarr:7878" \
   refresharr
+```
+
+## Missing Files Report
+
+The service now generates comprehensive reports of missing files found during cleanup operations. Reports are automatically saved to the `reports/` directory in JSON format and displayed in the terminal in human-readable format.
+
+### Report Features
+
+- **JSON Export**: Detailed reports saved as timestamped JSON files in `reports/` directory
+- **Terminal Display**: Human-readable summary printed to console (unless `--no-report` flag is used)
+- **Dry Run Support**: Reports generated for both dry runs and actual cleanup operations
+- **Detailed Information**: Includes media names, episode details, file paths, and timestamps
+
+### Report Content
+
+Each report includes:
+- **Service Type**: Whether from Sonarr or Radarr
+- **Run Type**: "dry-run" or "real-run"
+- **Generation Timestamp**: When the report was created
+- **Total Missing Files**: Count of missing files found
+- **File Details**: For each missing file:
+  - Media name (series/movie title)
+  - Episode name and season/episode numbers (for TV shows)
+  - Complete file path
+  - Database file ID
+  - Processing timestamp
+
+### Sample Report Output
+
+**Terminal Display:**
+```
+📊 MISSING FILES REPORT
+==========================================
+Generated: 2023-12-01T15:30:00Z
+Service: sonarr
+Run Type: dry-run
+Total Missing Files: 3
+
+Missing Files:
+==========================================
+1. Breaking Bad
+   Episode: S01E02 - Cat's in the Bag...
+   Missing File: /media/tv/Breaking Bad/Season 01/S01E02.mkv
+   File ID: 2001
+   Processed: 2023-12-01T15:30:15Z
+
+2. The Office
+   Episode: S02E05 - Halloween
+   Missing File: /media/tv/The Office/Season 02/S02E05.mkv
+   File ID: 2456
+   Processed: 2023-12-01T15:30:32Z
+
+3. Inception
+   Missing File: /media/movies/Inception (2010)/Inception.mkv
+   File ID: 3001
+   Processed: 2023-12-01T15:30:45Z
+==========================================
+📄 Report saved to: reports/sonarr-missing-files-report-dryrun-20231201-153000.json
+```
+
+**JSON File Structure:**
+```json
+{
+  "generatedAt": "2023-12-01T15:30:00Z",
+  "runType": "dry-run",
+  "serviceType": "sonarr",
+  "totalMissing": 3,
+  "missingFiles": [
+    {
+      "mediaType": "series",
+      "mediaName": "Breaking Bad",
+      "episodeName": "Cat's in the Bag...",
+      "season": 1,
+      "episode": 2,
+      "filePath": "/media/tv/Breaking Bad/Season 01/S01E02.mkv",
+      "fileId": 2001,
+      "processedAt": "2023-12-01T15:30:15Z"
+    },
+    {
+      "mediaType": "movie",
+      "mediaName": "Inception",
+      "filePath": "/media/movies/Inception (2010)/Inception.mkv",
+      "fileId": 3001,
+      "processedAt": "2023-12-01T15:30:45Z"
+    }
+  ]
+}
 ```
 
 ## Sample Output

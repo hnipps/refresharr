@@ -10,9 +10,9 @@ echo "=========================================="
 echo
 
 # Check if binary exists
-if [ ! -f "./refresharr-cli" ]; then
+if [ ! -f "./refresharr" ]; then
     echo "Building RefreshArr CLI..."
-    go build -o refresharr-cli cmd/refresharr/main.go
+    go build -o refresharr main.go
     echo "✅ Build complete"
     echo
 fi
@@ -20,13 +20,13 @@ fi
 # Example 1: Show version
 echo "1. Version Information:"
 echo "----------------------"
-./refresharr-cli --version
+./refresharr --version
 echo
 
 # Example 2: Show help
 echo "2. Help Information:"
 echo "-------------------"
-./refresharr-cli --help | head -20
+./refresharr --help | head -20
 echo "... (truncated for brevity)"
 echo
 
@@ -53,12 +53,12 @@ echo
 echo "4. Dry Run Example (safe to run):"
 echo "---------------------------------"
 if [ -n "$SONARR_API_KEY" ]; then
-    echo "Running: ./refresharr-cli --dry-run --log-level DEBUG"
+    echo "Running: ./refresharr --dry-run --log-level DEBUG"
     echo "This will show what would be cleaned up without making changes..."
     echo
     # Comment out the next line to actually run the dry run
     echo "(Commented out for safety - uncomment to test)"
-    # ./refresharr-cli --dry-run --log-level DEBUG
+    # ./refresharr --dry-run --log-level DEBUG
 else
     echo "Skipped: SONARR_API_KEY not configured"
 fi
@@ -69,19 +69,19 @@ echo "5. Common Usage Patterns:"
 echo "------------------------"
 echo "# Basic cleanup (after setting SONARR_API_KEY):"
 echo "export SONARR_API_KEY='your-api-key'"
-echo "./refresharr-cli"
+echo "./refresharr"
 echo
 echo "# Dry run first (recommended):"
-echo "./refresharr-cli --dry-run"
+echo "./refresharr --dry-run"
 echo
 echo "# Process specific series:"
-echo "./refresharr-cli --series-ids '123,456,789'"
+echo "./refresharr --series-ids '123,456,789'"
 echo
 echo "# Custom Sonarr instance:"
-echo "./refresharr-cli --sonarr-url 'http://192.168.1.100:8989' --sonarr-api-key 'your-key'"
+echo "./refresharr --sonarr-url 'http://192.168.1.100:8989' --sonarr-api-key 'your-key'"
 echo
 echo "# Debug logging for troubleshooting:"
-echo "./refresharr-cli --log-level DEBUG"
+echo "./refresharr --log-level DEBUG"
 echo
 
 echo "6. Configuration via Environment Variables:"
@@ -95,7 +95,7 @@ export LOG_LEVEL="DEBUG"            # Verbose output
 export DRY_RUN="true"              # Safe mode
 
 # Then simply run:
-./refresharr-cli
+./refresharr
 EOF
 
 echo

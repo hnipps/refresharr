@@ -27,6 +27,11 @@ type CleanupServiceImpl struct {
 	requestDelay     time.Duration
 	concurrentLimit  int
 	dryRun           bool
+	missingFiles     []models.MissingFileEntry
+	missingFilesMu   sync.Mutex
+	seriesInfo       map[int]string // seriesID -> seriesName
+	movieInfo        map[int]string // movieID -> movieName
+	mediaInfoMu      sync.RWMutex
 }
 
 // NewCleanupService creates a new cleanup service
@@ -71,6 +76,72 @@ func NewCleanupServiceWithConcurrency(
 }
 
 // CleanupMissingFiles performs cleanup for all series or movies based on client type
+// addMissingFileEntry safely adds a missing file entry to the collection
+func (s *CleanupServiceImpl) addMissingFileEntry(entry models.MissingFileEntry) {
+	s.missingFilesMu.Lock()
+	defer s.missingFilesMu.Unlock()
+	s.missingFiles = append(s.missingFiles, entry)
+}
+
+// buildReport creates a missing files report from collected data
+func (s *CleanupServiceImpl) buildReport() *models.MissingFilesReport {
+	s.missingFilesMu.Lock()
+	defer s.missingFilesMu.Unlock()
+
+	runType := "real-run"
+	if s.dryRun {
+		runType = "dry-run"
+	}
+
+	return &models.MissingFilesReport{
+		GeneratedAt:  time.Now().Format(time.RFC3339),
+		RunType:      runType,
+		ServiceType:  s.client.GetName(),
+		TotalMissing: len(s.missingFiles),
+		MissingFiles: s.missingFiles,
+	}
+}
+
+// setSeriesInfo safely sets series information
+func (s *CleanupServiceImpl) setSeriesInfo(seriesID int, seriesName string) {
+	s.mediaInfoMu.Lock()
+	defer s.mediaInfoMu.Unlock()
+	if s.seriesInfo == nil {
+		s.seriesInfo = make(map[int]string)
+	}
+	s.seriesInfo[seriesID] = seriesName
+}
+
+// getSeriesInfo safely gets series information
+func (s *CleanupServiceImpl) getSeriesInfo(seriesID int) string {
+	s.mediaInfoMu.RLock()
+	defer s.mediaInfoMu.RUnlock()
+	if name, exists := s.seriesInfo[seriesID]; exists {
+		return name
+	}
+	return fmt.Sprintf("Series %d", seriesID)
+}
+
+// setMovieInfo safely sets movie information
+func (s *CleanupServiceImpl) setMovieInfo(movieID int, movieName string) {
+	s.mediaInfoMu.Lock()
+	defer s.mediaInfoMu.Unlock()
+	if s.movieInfo == nil {
+		s.movieInfo = make(map[int]string)
+	}
+	s.movieInfo[movieID] = movieName
+}
+
+// getMovieInfo safely gets movie information
+func (s *CleanupServiceImpl) getMovieInfo(movieID int) string {
+	s.mediaInfoMu.RLock()
+	defer s.mediaInfoMu.RUnlock()
+	if name, exists := s.movieInfo[movieID]; exists {
+		return name
+	}
+	return fmt.Sprintf("Movie %d", movieID)
+}
+
 func (s *CleanupServiceImpl) CleanupMissingFiles(ctx context.Context) (*models.CleanupResult, error) {
 	s.logger.Info("Starting %s missing file cleanup...", s.client.GetName())
 	s.logger.Info("================================================")
@@ -99,15 +170,17 @@ func (s *CleanupServiceImpl) CleanupMissingFiles(ctx context.Context) (*models.C
 			return &models.CleanupResult{
 				Stats:   models.CleanupStats{},
 				Success: true,
+				Report:  s.buildReport(),
 			}, nil
 		}
 
 		s.logger.Info("Found %d series", len(series))
 
-		// Extract series IDs
+		// Store series information and extract series IDs
 		var seriesIDs []int
-		for _, s := range series {
-			seriesIDs = append(seriesIDs, s.ID)
+		for _, series := range series {
+			s.setSeriesInfo(series.ID, series.Title)
+			seriesIDs = append(seriesIDs, series.ID)
 		}
 
 		// Cleanup specific series
@@ -125,15 +198,17 @@ func (s *CleanupServiceImpl) CleanupMissingFiles(ctx context.Context) (*models.C
 			return &models.CleanupResult{
 				Stats:   models.CleanupStats{},
 				Success: true,
+				Report:  s.buildReport(),
 			}, nil
 		}
 
 		s.logger.Info("Found %d movies", len(movies))
 
-		// Extract movie IDs
+		// Store movie information and extract movie IDs
 		var movieIDs []int
-		for _, m := range movies {
-			movieIDs = append(movieIDs, m.ID)
+		for _, movie := range movies {
+			s.setMovieInfo(movie.ID, movie.Title)
+			movieIDs = append(movieIDs, movie.ID)
 		}
 
 		// Cleanup specific movies
@@ -217,6 +292,7 @@ func (s *CleanupServiceImpl) CleanupMissingFilesForSeries(ctx context.Context, s
 					Stats:    stats,
 					Messages: messages,
 					Success:  false,
+					Report:   s.buildReport(),
 				}, result.err
 			}
 
@@ -256,6 +332,7 @@ func (s *CleanupServiceImpl) CleanupMissingFilesForSeries(ctx context.Context, s
 		Stats:    stats,
 		Messages: messages,
 		Success:  stats.Errors == 0,
+		Report:   s.buildReport(),
 	}, nil
 }
 
@@ -333,6 +410,7 @@ func (s *CleanupServiceImpl) CleanupMissingFilesForMovies(ctx context.Context, m
 					Stats:    stats,
 					Messages: messages,
 					Success:  false,
+					Report:   s.buildReport(),
 				}, result.err
 			}
 
@@ -372,6 +450,7 @@ func (s *CleanupServiceImpl) CleanupMissingFilesForMovies(ctx context.Context, m
 		Stats:    stats,
 		Messages: messages,
 		Success:  stats.Errors == 0,
+		Report:   s.buildReport(),
 	}, nil
 }
 
@@ -469,6 +548,22 @@ func (s *CleanupServiceImpl) cleanupSeries(ctx context.Context, seriesID int) (m
 			// File is missing
 			episodeStats.MissingFiles++
 			s.progressReporter.ReportMissingFile(episodeFile.Path)
+
+			// Add to missing files report
+			seriesName := s.getSeriesInfo(ep.SeriesID)
+			season := ep.SeasonNumber
+			episode := ep.EpisodeNumber
+			missingEntry := models.MissingFileEntry{
+				MediaType:   "series",
+				MediaName:   seriesName,
+				EpisodeName: ep.Title,
+				Season:      &season,
+				Episode:     &episode,
+				FilePath:    episodeFile.Path,
+				FileID:      *ep.EpisodeFileID,
+				ProcessedAt: time.Now().Format(time.RFC3339),
+			}
+			s.addMissingFileEntry(missingEntry)
 
 			if s.dryRun {
 				s.logger.Info("    🏃 DRY RUN: Would delete episode file record %d", *ep.EpisodeFileID)
@@ -580,6 +675,17 @@ func (s *CleanupServiceImpl) cleanupMovie(ctx context.Context, movieID int) (mod
 	// File is missing
 	stats.MissingFiles++
 	s.progressReporter.ReportMissingFile(movieFile.Path)
+
+	// Add to missing files report
+	movieName := s.getMovieInfo(targetMovie.ID)
+	missingEntry := models.MissingFileEntry{
+		MediaType:   "movie",
+		MediaName:   movieName,
+		FilePath:    movieFile.Path,
+		FileID:      *targetMovie.MovieFileID,
+		ProcessedAt: time.Now().Format(time.RFC3339),
+	}
+	s.addMissingFileEntry(missingEntry)
 
 	if s.dryRun {
 		s.logger.Info("    🏃 DRY RUN: Would delete movie file record %d", *targetMovie.MovieFileID)
