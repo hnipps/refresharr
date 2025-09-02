@@ -3,6 +3,7 @@ package arr
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -87,6 +88,56 @@ func (s *CleanupServiceImpl) addMissingFileEntry(entry models.MissingFileEntry) 
 	s.missingFiles = append(s.missingFiles, entry)
 }
 
+// deduplicateMissingFiles removes duplicate entries, prioritizing those with real FileIDs
+func (s *CleanupServiceImpl) deduplicateMissingFiles(entries []models.MissingFileEntry) []models.MissingFileEntry {
+	// Use a map to track the best entry for each unique identifier
+	entryMap := make(map[string]models.MissingFileEntry)
+
+	for _, entry := range entries {
+		// Create a unique key for deduplication
+		var key string
+		if entry.MediaType == "movie" && entry.TMDBID > 0 {
+			// For movies with TMDB ID, use TMDB ID as primary key
+			key = fmt.Sprintf("movie-tmdb-%d", entry.TMDBID)
+		} else {
+			// For series or movies without TMDB ID, use file path
+			key = fmt.Sprintf("%s-path-%s", entry.MediaType, entry.FilePath)
+		}
+
+		// Check if we already have an entry for this key
+		if existing, exists := entryMap[key]; exists {
+			// Prioritize entry with real FileID (> 0) over broken symlink entries (FileID = 0)
+			if entry.FileID > 0 && existing.FileID == 0 {
+				entryMap[key] = entry
+			} else if entry.FileID == 0 && existing.FileID > 0 {
+				// Keep existing entry (which has real FileID)
+				continue
+			} else {
+				// Both have same FileID type, keep the more recent one
+				if entry.ProcessedAt > existing.ProcessedAt {
+					entryMap[key] = entry
+				}
+			}
+		} else {
+			// First entry for this key
+			entryMap[key] = entry
+		}
+	}
+
+	// Convert map back to slice
+	deduplicated := make([]models.MissingFileEntry, 0, len(entryMap))
+	for _, entry := range entryMap {
+		deduplicated = append(deduplicated, entry)
+	}
+
+	// Sort by ProcessedAt to maintain consistent order
+	sort.Slice(deduplicated, func(i, j int) bool {
+		return deduplicated[i].ProcessedAt < deduplicated[j].ProcessedAt
+	})
+
+	return deduplicated
+}
+
 // buildReport creates a missing files report from collected data
 func (s *CleanupServiceImpl) buildReport() *models.MissingFilesReport {
 	s.missingFilesMu.Lock()
@@ -97,12 +148,15 @@ func (s *CleanupServiceImpl) buildReport() *models.MissingFilesReport {
 		runType = "dry-run"
 	}
 
+	// Deduplicate missing files before building the report
+	deduplicatedFiles := s.deduplicateMissingFiles(s.missingFiles)
+
 	return &models.MissingFilesReport{
 		GeneratedAt:  time.Now().Format(time.RFC3339),
 		RunType:      runType,
 		ServiceType:  s.client.GetName(),
-		TotalMissing: len(s.missingFiles),
-		MissingFiles: s.missingFiles,
+		TotalMissing: len(deduplicatedFiles),
+		MissingFiles: deduplicatedFiles,
 	}
 }
 
@@ -707,6 +761,7 @@ func (s *CleanupServiceImpl) cleanupMovie(ctx context.Context, movieID int) (mod
 		FilePath:    movieFile.Path,
 		FileID:      *targetMovie.MovieFileID,
 		ProcessedAt: time.Now().Format(time.RFC3339),
+		TMDBID:      targetMovie.TMDBID,
 	}
 	s.addMissingFileEntry(missingEntry)
 
