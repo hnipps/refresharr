@@ -96,7 +96,7 @@ This design makes it easy to add support for Radarr by implementing the `Client`
 | `CONCURRENT_LIMIT` | `5` | Max concurrent operations |
 | `LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARN, ERROR) |
 | `DRY_RUN` | `false` | Enable dry run mode |
-| `ADD_MISSING_MOVIES` | `false` | Enable broken symlink detection and automatic movie addition |
+| `ADD_MISSING_MOVIES` | `false` | Add movies/series to collection when found from broken symlinks |
 | `QUALITY_PROFILE_ID` | `12` | Quality profile ID to use when adding new movies |
 
 **Note**: At least one service (Sonarr or Radarr) must be configured with both URL and API key.
@@ -117,7 +117,7 @@ This design makes it easy to add support for Radarr by implementing the `Client`
 
 ## Broken Symlink Detection
 
-RefreshArr can automatically detect broken symlinks in your Radarr root directories and add missing movies to your collection. This feature is particularly useful if you maintain symlink libraries that might become broken due to storage issues or file moves.
+RefreshArr can automatically detect broken symlinks in your Radarr and Sonarr root directories and optionally add missing movies/series to your collection. Broken symlink detection always runs and reports findings, while adding media to your collection is controlled by the `ADD_MISSING_MOVIES` setting.
 
 ### How It Works
 
@@ -132,7 +132,7 @@ RefreshArr can automatically detect broken symlinks in your Radarr root director
 
 - Movie directories must include TMDB ID in the format: `Movie Title (Year) [tmdb-12345]`
 - Quality profile must exist in Radarr (default ID: 12, configurable via `QUALITY_PROFILE_ID`)
-- Feature must be enabled with `ADD_MISSING_MOVIES=true`
+- Set `ADD_MISSING_MOVIES=true` to add missing movies to collection (detection always runs)
 
 ## Usage
 

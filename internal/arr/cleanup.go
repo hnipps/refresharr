@@ -28,8 +28,8 @@ type CleanupServiceImpl struct {
 	requestDelay     time.Duration
 	concurrentLimit  int
 	dryRun           bool
-	qualityProfileID int  // Quality profile ID for adding movies
-	addMissingMovies bool // Whether to add missing movies from broken symlinks
+	qualityProfileID int  // Quality profile ID for adding movies/series
+	addMissingMovies bool // Whether to add missing movies/series from broken symlinks to collection
 	missingFiles     []models.MissingFileEntry
 	missingFilesMu   sync.Mutex
 	seriesInfo       map[int]string // seriesID -> seriesName
@@ -292,6 +292,24 @@ func (s *CleanupServiceImpl) CleanupMissingFilesForSeries(ctx context.Context, s
 	seriesCount := len(seriesIDs)
 	s.logger.Info("Processing %d series with concurrency limit of %d", seriesCount, s.concurrentLimit)
 
+	// Handle broken symlinks if this is a Sonarr client
+	if s.client.GetName() == "sonarr" {
+		s.logger.Info("Step 1.5: Checking for broken symlinks and missing series...")
+		symlinkStats, err := s.handleBrokenSymlinksForSeries(ctx)
+		if err != nil {
+			s.logger.Warn("Broken symlink handling failed: %s", err.Error())
+			// Don't fail the entire operation, just add to messages
+			messages = append(messages, fmt.Sprintf("Broken symlink handling failed: %s", err.Error()))
+		} else {
+			// Merge symlink stats into main stats
+			mu.Lock()
+			stats.TotalItemsChecked += symlinkStats.TotalItemsChecked
+			stats.MissingFiles += symlinkStats.MissingFiles
+			stats.Errors += symlinkStats.Errors
+			mu.Unlock()
+		}
+	}
+
 	// Create worker pool for concurrent processing
 	semaphore := make(chan struct{}, s.concurrentLimit)
 	var wg sync.WaitGroup
@@ -410,8 +428,8 @@ func (s *CleanupServiceImpl) CleanupMissingFilesForMovies(ctx context.Context, m
 	movieCount := len(movieIDs)
 	s.logger.Info("Processing %d movies with concurrency limit of %d", movieCount, s.concurrentLimit)
 
-	// Handle broken symlinks if this is a Radarr client and feature is enabled
-	if s.client.GetName() == "radarr" && s.addMissingMovies {
+	// Handle broken symlinks if this is a Radarr client
+	if s.client.GetName() == "radarr" {
 		s.logger.Info("Step 1.5: Checking for broken symlinks and missing movies...")
 		symlinkStats, err := s.handleBrokenSymlinks(ctx)
 		if err != nil {
@@ -942,7 +960,7 @@ func (s *CleanupServiceImpl) handleBrokenSymlink(ctx context.Context, symlinkPat
 		HasFile:          false,
 	}
 
-	if !s.dryRun {
+	if s.addMissingMovies && !s.dryRun {
 		// Add movie to Radarr collection
 		s.logger.Info("Adding movie to collection: %s (%d)", movieLookup.Title, movieLookup.Year)
 		addedMovie, err := s.client.AddMovie(ctx, movieToAdd)
@@ -952,8 +970,10 @@ func (s *CleanupServiceImpl) handleBrokenSymlink(ctx context.Context, symlinkPat
 
 		// Update our movie info cache
 		s.setMovieInfo(addedMovie.ID, addedMovie.Title)
-	} else {
+	} else if s.dryRun {
 		s.logger.Info("🏃 DRY RUN: Would add movie to collection: %s (%d)", movieLookup.Title, movieLookup.Year)
+	} else if !s.addMissingMovies {
+		s.logger.Info("📋 ADD_MISSING_MOVIES=false: Would add movie to collection: %s (%d)", movieLookup.Title, movieLookup.Year)
 	}
 
 	// Add to missing files report
@@ -963,8 +983,174 @@ func (s *CleanupServiceImpl) handleBrokenSymlink(ctx context.Context, symlinkPat
 		FilePath:          symlinkPath,
 		FileID:            0, // No file ID since it's a broken symlink
 		ProcessedAt:       time.Now().Format(time.RFC3339),
-		AddedToCollection: !s.dryRun,
+		AddedToCollection: s.addMissingMovies && !s.dryRun,
 		TMDBID:            tmdbID,
+	}
+	s.addMissingFileEntry(missingEntry)
+	stats.MissingFiles++
+
+	return stats, nil
+}
+
+// handleBrokenSymlinksForSeries scans for broken symlinks and adds missing series to Sonarr collection
+func (s *CleanupServiceImpl) handleBrokenSymlinksForSeries(ctx context.Context) (models.CleanupStats, error) {
+	stats := models.CleanupStats{}
+
+	s.logger.Info("Scanning for broken symlinks in Sonarr root directories...")
+
+	// Get Sonarr root folders
+	rootFolders, err := s.client.GetRootFolders(ctx)
+	if err != nil {
+		return stats, fmt.Errorf("failed to get root folders: %w", err)
+	}
+
+	if len(rootFolders) == 0 {
+		s.logger.Info("No root folders configured in Sonarr")
+		return stats, nil
+	}
+
+	// Define series file extensions to look for
+	seriesExtensions := []string{".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v"}
+
+	// Scan each root folder for broken symlinks
+	var allBrokenSymlinks []string
+	for _, folder := range rootFolders {
+		s.logger.Info("Scanning root folder: %s", folder.Path)
+
+		brokenSymlinks, err := s.fileChecker.FindBrokenSymlinks(folder.Path, seriesExtensions)
+		if err != nil {
+			s.logger.Warn("Failed to scan folder %s: %s", folder.Path, err.Error())
+			stats.Errors++
+			continue
+		}
+
+		s.logger.Info("Found %d broken symlinks in %s", len(brokenSymlinks), folder.Path)
+		allBrokenSymlinks = append(allBrokenSymlinks, brokenSymlinks...)
+	}
+
+	if len(allBrokenSymlinks) == 0 {
+		s.logger.Info("No broken symlinks found")
+		return stats, nil
+	}
+
+	s.logger.Info("Processing %d broken symlinks...", len(allBrokenSymlinks))
+
+	// Process each broken symlink
+	for _, symlinkPath := range allBrokenSymlinks {
+		symlinkStats, err := s.handleBrokenSymlinkForSeries(ctx, symlinkPath, rootFolders)
+		if err != nil {
+			s.logger.Error("Failed to handle broken symlink %s: %s", symlinkPath, err.Error())
+			stats.Errors++
+			continue
+		}
+
+		stats.TotalItemsChecked += symlinkStats.TotalItemsChecked
+		stats.MissingFiles += symlinkStats.MissingFiles
+	}
+
+	return stats, nil
+}
+
+// handleBrokenSymlinkForSeries processes a single broken symlink for series
+func (s *CleanupServiceImpl) handleBrokenSymlinkForSeries(ctx context.Context, symlinkPath string, rootFolders []models.RootFolder) (models.CleanupStats, error) {
+	stats := models.CleanupStats{TotalItemsChecked: 1}
+
+	s.logger.Debug("Processing broken symlink: %s", symlinkPath)
+
+	// Extract TVDB ID from path
+	tvdbID, err := models.ParseTVDBIDFromPath(symlinkPath)
+	if err != nil {
+		s.logger.Warn("Could not parse TVDB ID from path %s: %s", symlinkPath, err.Error())
+		return stats, nil // Not an error, just skip this file
+	}
+
+	s.logger.Debug("Extracted TVDB ID %d from %s", tvdbID, symlinkPath)
+
+	// Check if series already exists in Sonarr collection
+	existingSeries, err := s.client.GetSeriesByTVDBID(ctx, tvdbID)
+	if err == nil {
+		// Series already exists in collection
+		s.logger.Debug("Series with TVDB ID %d already exists in collection: %s", tvdbID, existingSeries.Title)
+
+		// Add to missing files report but don't add to collection
+		missingEntry := models.MissingFileEntry{
+			MediaType:         "series",
+			MediaName:         existingSeries.Title,
+			FilePath:          symlinkPath,
+			FileID:            0, // No file ID since it's a broken symlink
+			ProcessedAt:       time.Now().Format(time.RFC3339),
+			AddedToCollection: false,
+			TVDBID:            tvdbID,
+		}
+		s.addMissingFileEntry(missingEntry)
+		stats.MissingFiles++
+		return stats, nil
+	}
+
+	// Series not found in collection, need to add it
+	s.logger.Info("Series with TVDB ID %d not found in collection, looking up details...", tvdbID)
+
+	// Lookup series details from TVDB
+	seriesLookup, err := s.client.LookupSeriesByTVDBID(ctx, tvdbID)
+	if err != nil {
+		return stats, fmt.Errorf("failed to lookup series with TVDB ID %d: %w", tvdbID, err)
+	}
+
+	// Determine which root folder to use (prefer the one that contains the broken symlink)
+	var selectedRootFolder *models.RootFolder
+	for _, folder := range rootFolders {
+		if strings.HasPrefix(symlinkPath, folder.Path) {
+			selectedRootFolder = &folder
+			break
+		}
+	}
+
+	// If no matching root folder found, use the first one
+	if selectedRootFolder == nil && len(rootFolders) > 0 {
+		selectedRootFolder = &rootFolders[0]
+		s.logger.Debug("Using first available root folder: %s", selectedRootFolder.Path)
+	}
+
+	if selectedRootFolder == nil {
+		return stats, fmt.Errorf("no suitable root folder found for series")
+	}
+
+	// Create series object for adding to collection
+	seriesToAdd := models.Series{
+		MediaItem: models.MediaItem{
+			Title: seriesLookup.Title,
+		},
+		TVDBID:           seriesLookup.TVDBID,
+		Monitored:        true,
+		QualityProfileID: s.qualityProfileID,
+		RootFolderPath:   selectedRootFolder.Path,
+	}
+
+	if s.addMissingMovies && !s.dryRun {
+		// Add series to Sonarr collection
+		s.logger.Info("Adding series to collection: %s", seriesLookup.Title)
+		addedSeries, err := s.client.AddSeries(ctx, seriesToAdd)
+		if err != nil {
+			return stats, fmt.Errorf("failed to add series %s: %w", seriesLookup.Title, err)
+		}
+
+		// Update our series info cache
+		s.setSeriesInfo(addedSeries.ID, addedSeries.Title)
+	} else if s.dryRun {
+		s.logger.Info("🏃 DRY RUN: Would add series to collection: %s", seriesLookup.Title)
+	} else if !s.addMissingMovies {
+		s.logger.Info("📋 ADD_MISSING_MOVIES=false: Would add series to collection: %s", seriesLookup.Title)
+	}
+
+	// Add to missing files report
+	missingEntry := models.MissingFileEntry{
+		MediaType:         "series",
+		MediaName:         seriesLookup.Title,
+		FilePath:          symlinkPath,
+		FileID:            0, // No file ID since it's a broken symlink
+		ProcessedAt:       time.Now().Format(time.RFC3339),
+		AddedToCollection: s.addMissingMovies && !s.dryRun,
+		TVDBID:            tvdbID,
 	}
 	s.addMissingFileEntry(missingEntry)
 	stats.MissingFiles++

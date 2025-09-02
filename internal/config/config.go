@@ -30,7 +30,7 @@ type Config struct {
 	ShowVersion bool   // Show version and exit
 
 	// Broken symlink handling
-	AddMissingMovies bool // Whether to add missing movies found from broken symlinks
+	AddMissingMovies bool // Whether to add movies/series to collection when found from broken symlinks
 	QualityProfileID int  // Quality profile ID to use when adding movies (default: 12)
 }
 
@@ -85,7 +85,7 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 			fmt.Fprintf(os.Stderr, "  CONCURRENT_LIMIT Max concurrent requests (default: 5)\n")
 			fmt.Fprintf(os.Stderr, "  LOG_LEVEL       Log level (default: INFO)\n")
 			fmt.Fprintf(os.Stderr, "  DRY_RUN         Run in dry-run mode (default: false)\n")
-			fmt.Fprintf(os.Stderr, "  ADD_MISSING_MOVIES  Add movies found from broken symlinks (default: false)\n")
+			fmt.Fprintf(os.Stderr, "  ADD_MISSING_MOVIES  Add movies/series to collection when found from broken symlinks (default: false)\n")
 			fmt.Fprintf(os.Stderr, "  QUALITY_PROFILE_ID  Quality profile ID for new movies (default: 12)\n")
 			fmt.Fprintf(os.Stderr, "\nExamples:\n")
 			fmt.Fprintf(os.Stderr, "  %s --dry-run\n", os.Args[0])
