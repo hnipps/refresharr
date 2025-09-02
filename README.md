@@ -29,6 +29,7 @@ The service automatically:
 - ✅ **Rate Limiting**: Configurable delays to avoid API overload
 - ✅ **Selective Processing**: Process specific series or movies by ID
 - ✅ **Missing Files Report**: Generate detailed JSON and terminal reports of missing files
+- ✅ **Broken Symlink Detection**: Scan Radarr root directories for broken symlinks and automatically add missing movies to collection
 
 ### Planned (Future)
 - 🔄 **Web UI**: Browser-based interface for easier management
@@ -77,12 +78,7 @@ This design makes it easy to add support for Radarr by implementing the `Client`
 
 2. **Build the application**:
    ```bash
-   go build -o refresharr cmd/refresharr/main.go
-   ```
-
-3. **Or use the simple main.go**:
-   ```bash
-   go build -o refresharr-simple main.go
+   make build
    ```
 
 ## Configuration
@@ -100,6 +96,8 @@ This design makes it easy to add support for Radarr by implementing the `Client`
 | `CONCURRENT_LIMIT` | `5` | Max concurrent operations |
 | `LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARN, ERROR) |
 | `DRY_RUN` | `false` | Enable dry run mode |
+| `ADD_MISSING_MOVIES` | `false` | Enable broken symlink detection and automatic movie addition |
+| `QUALITY_PROFILE_ID` | `12` | Quality profile ID to use when adding new movies |
 
 **Note**: At least one service (Sonarr or Radarr) must be configured with both URL and API key.
 
@@ -116,6 +114,25 @@ This design makes it easy to add support for Radarr by implementing the `Client`
 2. Go to **Settings** → **General**
 3. Copy the **API Key** value
 4. Set it as `RADARR_API_KEY` environment variable
+
+## Broken Symlink Detection
+
+RefreshArr can automatically detect broken symlinks in your Radarr root directories and add missing movies to your collection. This feature is particularly useful if you maintain symlink libraries that might become broken due to storage issues or file moves.
+
+### How It Works
+
+1. **Scan Root Directories**: RefreshArr fetches all configured root directories from Radarr
+2. **Find Broken Symlinks**: Recursively scans for broken symlinks with movie file extensions (.mkv, .mp4, .avi, etc.)
+3. **Extract TMDB ID**: Parses the TMDB ID from directory/filename (e.g., `Movie Title (2023) [tmdb-12345]`)
+4. **Check Collection**: Verifies if the movie already exists in your Radarr collection
+5. **Add Missing Movies**: If not in collection, adds the movie with monitoring enabled and your specified quality profile
+6. **Report Results**: Includes these movies in the missing files report with an indication they were added
+
+### Requirements
+
+- Movie directories must include TMDB ID in the format: `Movie Title (Year) [tmdb-12345]`
+- Quality profile must exist in Radarr (default ID: 12, configurable via `QUALITY_PROFILE_ID`)
+- Feature must be enabled with `ADD_MISSING_MOVIES=true`
 
 ## Usage
 

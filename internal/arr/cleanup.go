@@ -27,6 +27,7 @@ type CleanupServiceImpl struct {
 	requestDelay     time.Duration
 	concurrentLimit  int
 	dryRun           bool
+	qualityProfileID int // Quality profile ID for adding movies
 	missingFiles     []models.MissingFileEntry
 	missingFilesMu   sync.Mutex
 	seriesInfo       map[int]string // seriesID -> seriesName
@@ -51,6 +52,7 @@ func NewCleanupService(
 		requestDelay:     requestDelay,
 		concurrentLimit:  5, // Default value, will be updated by NewCleanupServiceWithConcurrency
 		dryRun:           dryRun,
+		qualityProfileID: 12, // Default quality profile ID
 	}
 }
 
@@ -63,6 +65,7 @@ func NewCleanupServiceWithConcurrency(
 	requestDelay time.Duration,
 	concurrentLimit int,
 	dryRun bool,
+	qualityProfileID int,
 ) CleanupService {
 	return &CleanupServiceImpl{
 		client:           client,
@@ -72,6 +75,7 @@ func NewCleanupServiceWithConcurrency(
 		requestDelay:     requestDelay,
 		concurrentLimit:  concurrentLimit,
 		dryRun:           dryRun,
+		qualityProfileID: qualityProfileID,
 	}
 }
 
@@ -344,6 +348,25 @@ func (s *CleanupServiceImpl) CleanupMissingFilesForMovies(ctx context.Context, m
 
 	movieCount := len(movieIDs)
 	s.logger.Info("Processing %d movies with concurrency limit of %d", movieCount, s.concurrentLimit)
+
+	// Handle broken symlinks if this is a Radarr client and feature is enabled
+	// TODO: Add configuration support for AddMissingMovies flag
+	if s.client.GetName() == "radarr" { // For now, always check for broken symlinks in Radarr
+		s.logger.Info("Step 1.5: Checking for broken symlinks and missing movies...")
+		symlinkStats, err := s.handleBrokenSymlinks(ctx)
+		if err != nil {
+			s.logger.Warn("Broken symlink handling failed: %s", err.Error())
+			// Don't fail the entire operation, just add to messages
+			messages = append(messages, fmt.Sprintf("Broken symlink handling failed: %s", err.Error()))
+		} else {
+			// Merge symlink stats into main stats
+			mu.Lock()
+			stats.TotalItemsChecked += symlinkStats.TotalItemsChecked
+			stats.MissingFiles += symlinkStats.MissingFiles
+			stats.Errors += symlinkStats.Errors
+			mu.Unlock()
+		}
+	}
 
 	// Create worker pool for concurrent processing
 	semaphore := make(chan struct{}, s.concurrentLimit)
@@ -718,6 +741,172 @@ func (s *CleanupServiceImpl) cleanupMovie(ctx context.Context, movieID int) (mod
 	if s.requestDelay > 0 {
 		time.Sleep(s.requestDelay)
 	}
+
+	return stats, nil
+}
+
+// handleBrokenSymlinks scans for broken symlinks and adds missing movies to Radarr collection
+func (s *CleanupServiceImpl) handleBrokenSymlinks(ctx context.Context) (models.CleanupStats, error) {
+	stats := models.CleanupStats{}
+
+	s.logger.Info("Scanning for broken symlinks in Radarr root directories...")
+
+	// Get Radarr root folders
+	rootFolders, err := s.client.GetRootFolders(ctx)
+	if err != nil {
+		return stats, fmt.Errorf("failed to get root folders: %w", err)
+	}
+
+	if len(rootFolders) == 0 {
+		s.logger.Info("No root folders configured in Radarr")
+		return stats, nil
+	}
+
+	// Define movie file extensions to look for
+	movieExtensions := []string{".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v"}
+
+	// Scan each root folder for broken symlinks
+	var allBrokenSymlinks []string
+	for _, folder := range rootFolders {
+		s.logger.Info("Scanning root folder: %s", folder.Path)
+
+		brokenSymlinks, err := s.fileChecker.FindBrokenSymlinks(folder.Path, movieExtensions)
+		if err != nil {
+			s.logger.Warn("Failed to scan folder %s: %s", folder.Path, err.Error())
+			stats.Errors++
+			continue
+		}
+
+		s.logger.Info("Found %d broken symlinks in %s", len(brokenSymlinks), folder.Path)
+		allBrokenSymlinks = append(allBrokenSymlinks, brokenSymlinks...)
+	}
+
+	if len(allBrokenSymlinks) == 0 {
+		s.logger.Info("No broken symlinks found")
+		return stats, nil
+	}
+
+	s.logger.Info("Processing %d broken symlinks...", len(allBrokenSymlinks))
+
+	// Process each broken symlink
+	for _, symlinkPath := range allBrokenSymlinks {
+		symlinkStats, err := s.handleBrokenSymlink(ctx, symlinkPath, rootFolders)
+		if err != nil {
+			s.logger.Error("Failed to handle broken symlink %s: %s", symlinkPath, err.Error())
+			stats.Errors++
+			continue
+		}
+
+		stats.TotalItemsChecked += symlinkStats.TotalItemsChecked
+		stats.MissingFiles += symlinkStats.MissingFiles
+	}
+
+	return stats, nil
+}
+
+// handleBrokenSymlink processes a single broken symlink
+func (s *CleanupServiceImpl) handleBrokenSymlink(ctx context.Context, symlinkPath string, rootFolders []models.RootFolder) (models.CleanupStats, error) {
+	stats := models.CleanupStats{TotalItemsChecked: 1}
+
+	s.logger.Debug("Processing broken symlink: %s", symlinkPath)
+
+	// Extract TMDB ID from path
+	tmdbID, err := models.ParseTMDBIDFromPath(symlinkPath)
+	if err != nil {
+		s.logger.Warn("Could not parse TMDB ID from path %s: %s", symlinkPath, err.Error())
+		return stats, nil // Not an error, just skip this file
+	}
+
+	s.logger.Debug("Extracted TMDB ID %d from %s", tmdbID, symlinkPath)
+
+	// Check if movie already exists in Radarr collection
+	existingMovie, err := s.client.GetMovieByTMDBID(ctx, tmdbID)
+	if err == nil {
+		// Movie already exists in collection
+		s.logger.Debug("Movie with TMDB ID %d already exists in collection: %s", tmdbID, existingMovie.Title)
+
+		// Add to missing files report but don't add to collection
+		missingEntry := models.MissingFileEntry{
+			MediaType:         "movie",
+			MediaName:         existingMovie.Title,
+			FilePath:          symlinkPath,
+			FileID:            0, // No file ID since it's a broken symlink
+			ProcessedAt:       time.Now().Format(time.RFC3339),
+			AddedToCollection: false,
+			TMDBID:            tmdbID,
+		}
+		s.addMissingFileEntry(missingEntry)
+		stats.MissingFiles++
+		return stats, nil
+	}
+
+	// Movie not found in collection, need to add it
+	s.logger.Info("Movie with TMDB ID %d not found in collection, looking up details...", tmdbID)
+
+	// Lookup movie details from TMDB
+	movieLookup, err := s.client.LookupMovieByTMDBID(ctx, tmdbID)
+	if err != nil {
+		return stats, fmt.Errorf("failed to lookup movie with TMDB ID %d: %w", tmdbID, err)
+	}
+
+	// Determine which root folder to use (prefer the one that contains the broken symlink)
+	var selectedRootFolder *models.RootFolder
+	for _, folder := range rootFolders {
+		if strings.HasPrefix(symlinkPath, folder.Path) {
+			selectedRootFolder = &folder
+			break
+		}
+	}
+
+	// If no matching root folder found, use the first one
+	if selectedRootFolder == nil && len(rootFolders) > 0 {
+		selectedRootFolder = &rootFolders[0]
+		s.logger.Debug("Using first available root folder: %s", selectedRootFolder.Path)
+	}
+
+	if selectedRootFolder == nil {
+		return stats, fmt.Errorf("no suitable root folder found for movie")
+	}
+
+	// Create movie object for adding to collection
+	movieToAdd := models.Movie{
+		MediaItem: models.MediaItem{
+			Title: movieLookup.Title,
+		},
+		Year:             movieLookup.Year,
+		TMDBID:           movieLookup.TMDBID,
+		Monitored:        true,
+		QualityProfileID: s.qualityProfileID,
+		RootFolderPath:   selectedRootFolder.Path,
+		HasFile:          false,
+	}
+
+	if !s.dryRun {
+		// Add movie to Radarr collection
+		s.logger.Info("Adding movie to collection: %s (%d)", movieLookup.Title, movieLookup.Year)
+		addedMovie, err := s.client.AddMovie(ctx, movieToAdd)
+		if err != nil {
+			return stats, fmt.Errorf("failed to add movie %s: %w", movieLookup.Title, err)
+		}
+
+		// Update our movie info cache
+		s.setMovieInfo(addedMovie.ID, addedMovie.Title)
+	} else {
+		s.logger.Info("🏃 DRY RUN: Would add movie to collection: %s (%d)", movieLookup.Title, movieLookup.Year)
+	}
+
+	// Add to missing files report
+	missingEntry := models.MissingFileEntry{
+		MediaType:         "movie",
+		MediaName:         movieLookup.Title,
+		FilePath:          symlinkPath,
+		FileID:            0, // No file ID since it's a broken symlink
+		ProcessedAt:       time.Now().Format(time.RFC3339),
+		AddedToCollection: !s.dryRun,
+		TMDBID:            tmdbID,
+	}
+	s.addMissingFileEntry(missingEntry)
+	stats.MissingFiles++
 
 	return stats, nil
 }

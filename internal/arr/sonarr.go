@@ -211,6 +211,31 @@ func (c *SonarrClient) UpdateMovie(ctx context.Context, movie models.Movie) erro
 	return fmt.Errorf("UpdateMovie is not supported by Sonarr client")
 }
 
+// GetRootFolders is not applicable for Sonarr (returns error)
+func (c *SonarrClient) GetRootFolders(ctx context.Context) ([]models.RootFolder, error) {
+	return nil, fmt.Errorf("GetRootFolders is not supported by Sonarr client")
+}
+
+// GetQualityProfiles is not applicable for Sonarr (returns error)
+func (c *SonarrClient) GetQualityProfiles(ctx context.Context) ([]models.QualityProfile, error) {
+	return nil, fmt.Errorf("GetQualityProfiles is not supported by Sonarr client")
+}
+
+// LookupMovieByTMDBID is not applicable for Sonarr (returns error)
+func (c *SonarrClient) LookupMovieByTMDBID(ctx context.Context, tmdbID int) (*models.MovieLookup, error) {
+	return nil, fmt.Errorf("LookupMovieByTMDBID is not supported by Sonarr client")
+}
+
+// GetMovieByTMDBID is not applicable for Sonarr (returns error)
+func (c *SonarrClient) GetMovieByTMDBID(ctx context.Context, tmdbID int) (*models.Movie, error) {
+	return nil, fmt.Errorf("GetMovieByTMDBID is not supported by Sonarr client")
+}
+
+// AddMovie is not applicable for Sonarr (returns error)
+func (c *SonarrClient) AddMovie(ctx context.Context, movie models.Movie) (*models.Movie, error) {
+	return nil, fmt.Errorf("AddMovie is not supported by Sonarr client")
+}
+
 // TriggerRefresh triggers a missing episode search
 func (c *SonarrClient) TriggerRefresh(ctx context.Context) error {
 	command := map[string]string{

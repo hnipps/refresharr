@@ -240,6 +240,120 @@ func (c *RadarrClient) TriggerRefresh(ctx context.Context) error {
 	return nil
 }
 
+// GetRootFolders returns all root folders from Radarr
+func (c *RadarrClient) GetRootFolders(ctx context.Context) ([]models.RootFolder, error) {
+	resp, err := c.makeRequest(ctx, "GET", "/api/v3/rootfolder", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch root folders: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch root folders, status: %d", resp.StatusCode)
+	}
+
+	var rootFolders []models.RootFolder
+	if err := json.NewDecoder(resp.Body).Decode(&rootFolders); err != nil {
+		return nil, fmt.Errorf("failed to decode root folders response: %w", err)
+	}
+
+	c.logger.Debug("Fetched %d root folders from Radarr", len(rootFolders))
+	return rootFolders, nil
+}
+
+// GetQualityProfiles returns all quality profiles from Radarr
+func (c *RadarrClient) GetQualityProfiles(ctx context.Context) ([]models.QualityProfile, error) {
+	resp, err := c.makeRequest(ctx, "GET", "/api/v3/qualityprofile", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch quality profiles: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch quality profiles, status: %d", resp.StatusCode)
+	}
+
+	var qualityProfiles []models.QualityProfile
+	if err := json.NewDecoder(resp.Body).Decode(&qualityProfiles); err != nil {
+		return nil, fmt.Errorf("failed to decode quality profiles response: %w", err)
+	}
+
+	c.logger.Debug("Fetched %d quality profiles from Radarr", len(qualityProfiles))
+	return qualityProfiles, nil
+}
+
+// LookupMovieByTMDBID looks up movie information by TMDB ID
+func (c *RadarrClient) LookupMovieByTMDBID(ctx context.Context, tmdbID int) (*models.MovieLookup, error) {
+	path := fmt.Sprintf("/api/v3/movie/lookup/tmdb?tmdbId=%d", tmdbID)
+	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup movie with TMDB ID %d: %w", tmdbID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("movie with TMDB ID %d not found", tmdbID)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to lookup movie with TMDB ID %d, status: %d", tmdbID, resp.StatusCode)
+	}
+
+	var movieLookup models.MovieLookup
+	if err := json.NewDecoder(resp.Body).Decode(&movieLookup); err != nil {
+		return nil, fmt.Errorf("failed to decode movie lookup response for TMDB ID %d: %w", tmdbID, err)
+	}
+
+	c.logger.Debug("Successfully looked up movie with TMDB ID %d: %s", tmdbID, movieLookup.Title)
+	return &movieLookup, nil
+}
+
+// GetMovieByTMDBID returns a movie by TMDB ID if it exists in the collection
+func (c *RadarrClient) GetMovieByTMDBID(ctx context.Context, tmdbID int) (*models.Movie, error) {
+	// Get all movies and find the one with matching TMDB ID
+	movies, err := c.GetAllMovies(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch movies to search for TMDB ID %d: %w", tmdbID, err)
+	}
+
+	for _, movie := range movies {
+		if movie.TMDBID == tmdbID {
+			return &movie, nil
+		}
+	}
+
+	return nil, fmt.Errorf("movie with TMDB ID %d not found in collection", tmdbID)
+}
+
+// AddMovie adds a movie to the Radarr collection
+func (c *RadarrClient) AddMovie(ctx context.Context, movie models.Movie) (*models.Movie, error) {
+	// Marshal the movie object
+	jsonData, err := json.Marshal(movie)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal movie for addition: %w", err)
+	}
+
+	resp, err := c.makeRequest(ctx, "POST", "/api/v3/movie", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to add movie: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		// Get response body for better error reporting
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to add movie, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var addedMovie models.Movie
+	if err := json.NewDecoder(resp.Body).Decode(&addedMovie); err != nil {
+		return nil, fmt.Errorf("failed to decode added movie response: %w", err)
+	}
+
+	c.logger.Info("✅ Successfully added movie: %s (%d) with TMDB ID %d", addedMovie.Title, addedMovie.Year, addedMovie.TMDBID)
+	return &addedMovie, nil
+}
+
 // makeRequest makes an HTTP request to the Radarr API
 func (c *RadarrClient) makeRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	url := c.baseURL + path

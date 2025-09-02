@@ -1,5 +1,11 @@
 package models
 
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+)
+
 // MediaItem represents a base media item (can be extended for TV shows or movies)
 type MediaItem struct {
 	ID    int    `json:"id"`
@@ -19,6 +25,11 @@ type Movie struct {
 	Year        int  `json:"year,omitempty"`
 	HasFile     bool `json:"hasFile"`
 	MovieFileID *int `json:"movieFileId,omitempty"`
+	// Extended fields for TMDB and monitoring
+	TMDBID           int    `json:"tmdbId,omitempty"`
+	Monitored        bool   `json:"monitored"`
+	QualityProfileID int    `json:"qualityProfileId,omitempty"`
+	RootFolderPath   string `json:"rootFolderPath,omitempty"`
 }
 
 // Episode represents a TV episode
@@ -45,6 +56,31 @@ type MovieFile struct {
 	MovieID int    `json:"movieId"`
 }
 
+// RootFolder represents a Radarr root folder configuration
+type RootFolder struct {
+	ID   int    `json:"id"`
+	Path string `json:"path"`
+	Name string `json:"name,omitempty"`
+}
+
+// QualityProfile represents a Radarr quality profile
+type QualityProfile struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// MovieLookup represents a movie lookup result from TMDB
+type MovieLookup struct {
+	TMDBID   int    `json:"tmdbId"`
+	Title    string `json:"title"`
+	Year     int    `json:"year"`
+	Overview string `json:"overview,omitempty"`
+	Images   []struct {
+		CoverType string `json:"coverType"`
+		URL       string `json:"url"`
+	} `json:"images,omitempty"`
+}
+
 // CleanupStats tracks cleanup operation statistics
 type CleanupStats struct {
 	TotalItemsChecked int
@@ -55,14 +91,16 @@ type CleanupStats struct {
 
 // MissingFileEntry represents a single missing file entry in the report
 type MissingFileEntry struct {
-	MediaType   string `json:"mediaType"`             // "movie" or "series"
-	MediaName   string `json:"mediaName"`             // Movie title or series title
-	EpisodeName string `json:"episodeName,omitempty"` // Episode name (only for series)
-	Season      *int   `json:"season,omitempty"`      // Season number (only for series)
-	Episode     *int   `json:"episode,omitempty"`     // Episode number (only for series)
-	FilePath    string `json:"filePath"`              // Path to the missing file
-	FileID      int    `json:"fileId"`                // File ID in the database
-	ProcessedAt string `json:"processedAt"`           // Timestamp when processed
+	MediaType         string `json:"mediaType"`                   // "movie" or "series"
+	MediaName         string `json:"mediaName"`                   // Movie title or series title
+	EpisodeName       string `json:"episodeName,omitempty"`       // Episode name (only for series)
+	Season            *int   `json:"season,omitempty"`            // Season number (only for series)
+	Episode           *int   `json:"episode,omitempty"`           // Episode number (only for series)
+	FilePath          string `json:"filePath"`                    // Path to the missing file
+	FileID            int    `json:"fileId"`                      // File ID in the database
+	ProcessedAt       string `json:"processedAt"`                 // Timestamp when processed
+	AddedToCollection bool   `json:"addedToCollection,omitempty"` // Whether the movie was added to the collection
+	TMDBID            int    `json:"tmdbId,omitempty"`            // TMDB ID for movies
 }
 
 // MissingFilesReport represents a complete missing files report
@@ -80,4 +118,23 @@ type CleanupResult struct {
 	Messages []string
 	Success  bool
 	Report   *MissingFilesReport `json:"report,omitempty"` // Optional report data
+}
+
+// ParseTMDBIDFromPath extracts TMDB ID from a file path
+// Expected format: ...path.../Movie Title (Year) [tmdb-12345]/...
+func ParseTMDBIDFromPath(filePath string) (int, error) {
+	// Use regex to find tmdb-### pattern
+	re := regexp.MustCompile(`\[tmdb-(\d+)\]`)
+	matches := re.FindStringSubmatch(filePath)
+
+	if len(matches) < 2 {
+		return 0, fmt.Errorf("TMDB ID not found in path: %s", filePath)
+	}
+
+	tmdbID, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return 0, fmt.Errorf("invalid TMDB ID format in path %s: %w", filePath, err)
+	}
+
+	return tmdbID, nil
 }

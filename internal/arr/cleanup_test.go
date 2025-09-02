@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,6 +103,27 @@ func (m *mockClient) TriggerRefresh(ctx context.Context) error {
 	return m.triggerRefreshError
 }
 
+// New methods for broken symlink functionality (stubs for testing)
+func (m *mockClient) GetRootFolders(ctx context.Context) ([]models.RootFolder, error) {
+	return nil, errors.New("GetRootFolders not implemented in mock")
+}
+
+func (m *mockClient) GetQualityProfiles(ctx context.Context) ([]models.QualityProfile, error) {
+	return nil, errors.New("GetQualityProfiles not implemented in mock")
+}
+
+func (m *mockClient) LookupMovieByTMDBID(ctx context.Context, tmdbID int) (*models.MovieLookup, error) {
+	return nil, errors.New("LookupMovieByTMDBID not implemented in mock")
+}
+
+func (m *mockClient) GetMovieByTMDBID(ctx context.Context, tmdbID int) (*models.Movie, error) {
+	return nil, errors.New("GetMovieByTMDBID not implemented in mock")
+}
+
+func (m *mockClient) AddMovie(ctx context.Context, movie models.Movie) (*models.Movie, error) {
+	return nil, errors.New("AddMovie not implemented in mock")
+}
+
 type mockFileChecker struct {
 	fileExists map[string]bool
 	readable   map[string]bool
@@ -121,6 +143,16 @@ func (m *mockFileChecker) IsReadable(path string) bool {
 		return false
 	}
 	return readable
+}
+
+func (m *mockFileChecker) IsSymlink(path string) bool {
+	// For testing, assume any path with "symlink" in it is a symlink
+	return strings.Contains(path, "symlink")
+}
+
+func (m *mockFileChecker) FindBrokenSymlinks(rootDir string, extensions []string) ([]string, error) {
+	// For testing, return empty list (can be expanded later for specific tests)
+	return []string{}, nil
 }
 
 type mockLogger struct {

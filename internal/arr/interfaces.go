@@ -45,6 +45,21 @@ type Client interface {
 	UpdateMovie(ctx context.Context, movie models.Movie) error
 
 	// TriggerRefresh triggers a refresh/rescan operation
+	// GetRootFolders returns all root folders (Radarr specific)
+	GetRootFolders(ctx context.Context) ([]models.RootFolder, error)
+
+	// GetQualityProfiles returns all quality profiles
+	GetQualityProfiles(ctx context.Context) ([]models.QualityProfile, error)
+
+	// LookupMovieByTMDBID looks up movie information by TMDB ID
+	LookupMovieByTMDBID(ctx context.Context, tmdbID int) (*models.MovieLookup, error)
+
+	// AddMovie adds a movie to the collection
+	AddMovie(ctx context.Context, movie models.Movie) (*models.Movie, error)
+
+	// GetMovieByTMDBID returns a movie by TMDB ID if it exists in the collection
+	GetMovieByTMDBID(ctx context.Context, tmdbID int) (*models.Movie, error)
+
 	TriggerRefresh(ctx context.Context) error
 }
 
@@ -52,6 +67,8 @@ type Client interface {
 type FileChecker interface {
 	FileExists(path string) bool
 	IsReadable(path string) bool
+	FindBrokenSymlinks(rootDir string, extensions []string) ([]string, error)
+	IsSymlink(path string) bool
 }
 
 // CleanupService defines the interface for cleanup operations

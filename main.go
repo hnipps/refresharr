@@ -65,6 +65,7 @@ func main() {
 			cfg.RequestDelay,
 			cfg.ConcurrentLimit,
 			cfg.DryRun,
+			cfg.QualityProfileID,
 		)
 
 		// Run cleanup (with series filtering if applicable)

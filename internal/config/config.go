@@ -28,6 +28,10 @@ type Config struct {
 	Service     string // Service to use: "sonarr", "radarr", or "auto"
 	SeriesIDs   []int  // Specific series IDs to process (empty means all)
 	ShowVersion bool   // Show version and exit
+
+	// Broken symlink handling
+	AddMissingMovies bool // Whether to add missing movies found from broken symlinks
+	QualityProfileID int  // Quality profile ID to use when adding movies (default: 12)
 }
 
 // SonarrConfig holds Sonarr-specific configuration
@@ -81,6 +85,8 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 			fmt.Fprintf(os.Stderr, "  CONCURRENT_LIMIT Max concurrent requests (default: 5)\n")
 			fmt.Fprintf(os.Stderr, "  LOG_LEVEL       Log level (default: INFO)\n")
 			fmt.Fprintf(os.Stderr, "  DRY_RUN         Run in dry-run mode (default: false)\n")
+			fmt.Fprintf(os.Stderr, "  ADD_MISSING_MOVIES  Add movies found from broken symlinks (default: false)\n")
+			fmt.Fprintf(os.Stderr, "  QUALITY_PROFILE_ID  Quality profile ID for new movies (default: 12)\n")
 			fmt.Fprintf(os.Stderr, "\nExamples:\n")
 			fmt.Fprintf(os.Stderr, "  %s --dry-run\n", os.Args[0])
 			fmt.Fprintf(os.Stderr, "  %s --service sonarr --series-ids '123,456,789'\n", os.Args[0])
@@ -123,6 +129,8 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 		if seriesIDs == nil {
 			seriesIDs = seriesIDsFlag
 		}
+
+		// Handle new flags (they'll be processed later in the config loading)
 	}
 
 	// Load .env file if it exists (ignore errors - .env file is optional)
@@ -130,9 +138,11 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 
 	config := &Config{
 		// Default values
-		RequestTimeout:  30 * time.Second,
-		RequestDelay:    500 * time.Millisecond,
-		ConcurrentLimit: 5,
+		RequestTimeout:   30 * time.Second,
+		RequestDelay:     500 * time.Millisecond,
+		ConcurrentLimit:  5,
+		AddMissingMovies: false, // Default to disabled
+		QualityProfileID: 12,    // Default quality profile ID
 	}
 
 	// Set values from flags or defaults
@@ -219,6 +229,18 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 		config.LogLevel = envLogLevel
 	} else {
 		config.LogLevel = "INFO"
+	}
+
+	// Configure broken symlink handling
+	config.AddMissingMovies = getEnvBool("ADD_MISSING_MOVIES", false)
+	if qualityProfileStr := os.Getenv("QUALITY_PROFILE_ID"); qualityProfileStr != "" {
+		if qualityID, err := strconv.Atoi(qualityProfileStr); err == nil {
+			config.QualityProfileID = qualityID
+		} else {
+			config.QualityProfileID = 12 // Default
+		}
+	} else {
+		config.QualityProfileID = 12 // Default
 	}
 
 	// Validate configuration
