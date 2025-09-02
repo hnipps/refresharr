@@ -28,7 +28,8 @@ type CleanupServiceImpl struct {
 	requestDelay     time.Duration
 	concurrentLimit  int
 	dryRun           bool
-	qualityProfileID int // Quality profile ID for adding movies
+	qualityProfileID int  // Quality profile ID for adding movies
+	addMissingMovies bool // Whether to add missing movies from broken symlinks
 	missingFiles     []models.MissingFileEntry
 	missingFilesMu   sync.Mutex
 	seriesInfo       map[int]string // seriesID -> seriesName
@@ -53,7 +54,8 @@ func NewCleanupService(
 		requestDelay:     requestDelay,
 		concurrentLimit:  5, // Default value, will be updated by NewCleanupServiceWithConcurrency
 		dryRun:           dryRun,
-		qualityProfileID: 12, // Default quality profile ID
+		qualityProfileID: 12,    // Default quality profile ID
+		addMissingMovies: false, // Default to disabled
 	}
 }
 
@@ -67,6 +69,7 @@ func NewCleanupServiceWithConcurrency(
 	concurrentLimit int,
 	dryRun bool,
 	qualityProfileID int,
+	addMissingMovies bool,
 ) CleanupService {
 	return &CleanupServiceImpl{
 		client:           client,
@@ -77,6 +80,7 @@ func NewCleanupServiceWithConcurrency(
 		concurrentLimit:  concurrentLimit,
 		dryRun:           dryRun,
 		qualityProfileID: qualityProfileID,
+		addMissingMovies: addMissingMovies,
 	}
 }
 
@@ -99,8 +103,11 @@ func (s *CleanupServiceImpl) deduplicateMissingFiles(entries []models.MissingFil
 		if entry.MediaType == "movie" && entry.TMDBID > 0 {
 			// For movies with TMDB ID, use TMDB ID as primary key
 			key = fmt.Sprintf("movie-tmdb-%d", entry.TMDBID)
+		} else if entry.MediaType == "series" && entry.TVDBID > 0 {
+			// For series with TVDB ID, use TVDB ID as primary key
+			key = fmt.Sprintf("series-tvdb-%d", entry.TVDBID)
 		} else {
-			// For series or movies without TMDB ID, use file path
+			// For series or movies without TMDB/TVDB ID, use file path
 			key = fmt.Sprintf("%s-path-%s", entry.MediaType, entry.FilePath)
 		}
 
@@ -404,8 +411,7 @@ func (s *CleanupServiceImpl) CleanupMissingFilesForMovies(ctx context.Context, m
 	s.logger.Info("Processing %d movies with concurrency limit of %d", movieCount, s.concurrentLimit)
 
 	// Handle broken symlinks if this is a Radarr client and feature is enabled
-	// TODO: Add configuration support for AddMissingMovies flag
-	if s.client.GetName() == "radarr" { // For now, always check for broken symlinks in Radarr
+	if s.client.GetName() == "radarr" && s.addMissingMovies {
 		s.logger.Info("Step 1.5: Checking for broken symlinks and missing movies...")
 		symlinkStats, err := s.handleBrokenSymlinks(ctx)
 		if err != nil {

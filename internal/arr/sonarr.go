@@ -211,14 +211,46 @@ func (c *SonarrClient) UpdateMovie(ctx context.Context, movie models.Movie) erro
 	return fmt.Errorf("UpdateMovie is not supported by Sonarr client")
 }
 
-// GetRootFolders is not applicable for Sonarr (returns error)
+// GetRootFolders returns all root folders from Sonarr
 func (c *SonarrClient) GetRootFolders(ctx context.Context) ([]models.RootFolder, error) {
-	return nil, fmt.Errorf("GetRootFolders is not supported by Sonarr client")
+	resp, err := c.makeRequest(ctx, "GET", "/api/v3/rootfolder", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch root folders: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch root folders, status: %d", resp.StatusCode)
+	}
+
+	var rootFolders []models.RootFolder
+	if err := json.NewDecoder(resp.Body).Decode(&rootFolders); err != nil {
+		return nil, fmt.Errorf("failed to decode root folders response: %w", err)
+	}
+
+	c.logger.Debug("Fetched %d root folders from Sonarr", len(rootFolders))
+	return rootFolders, nil
 }
 
-// GetQualityProfiles is not applicable for Sonarr (returns error)
+// GetQualityProfiles returns all quality profiles from Sonarr
 func (c *SonarrClient) GetQualityProfiles(ctx context.Context) ([]models.QualityProfile, error) {
-	return nil, fmt.Errorf("GetQualityProfiles is not supported by Sonarr client")
+	resp, err := c.makeRequest(ctx, "GET", "/api/v3/qualityprofile", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch quality profiles: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch quality profiles, status: %d", resp.StatusCode)
+	}
+
+	var qualityProfiles []models.QualityProfile
+	if err := json.NewDecoder(resp.Body).Decode(&qualityProfiles); err != nil {
+		return nil, fmt.Errorf("failed to decode quality profiles response: %w", err)
+	}
+
+	c.logger.Debug("Fetched %d quality profiles from Sonarr", len(qualityProfiles))
+	return qualityProfiles, nil
 }
 
 // LookupMovieByTMDBID is not applicable for Sonarr (returns error)
@@ -277,4 +309,83 @@ func (c *SonarrClient) makeRequest(ctx context.Context, method, path string, bod
 	c.logger.Debug("Making %s request to %s", method, url)
 
 	return c.httpClient.Do(req)
+}
+
+// AddSeries adds a series to the Sonarr collection
+func (c *SonarrClient) AddSeries(ctx context.Context, series models.Series) (*models.Series, error) {
+	// Marshal the series object
+	jsonData, err := json.Marshal(series)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal series for addition: %w", err)
+	}
+
+	resp, err := c.makeRequest(ctx, "POST", "/api/v3/series", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to add series: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		// Get response body for better error reporting
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to add series, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var addedSeries models.Series
+	if err := json.NewDecoder(resp.Body).Decode(&addedSeries); err != nil {
+		return nil, fmt.Errorf("failed to decode added series response: %w", err)
+	}
+
+	c.logger.Info("✅ Successfully added series: %s with TVDB ID %d", addedSeries.Title, addedSeries.TVDBID)
+	return &addedSeries, nil
+}
+
+// GetSeriesByTVDBID returns a series by TVDB ID if it exists in the collection
+func (c *SonarrClient) GetSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.Series, error) {
+	// Get all series and find the one with matching TVDB ID
+	series, err := c.GetAllSeries(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch series to search for TVDB ID %d: %w", tvdbID, err)
+	}
+
+	for _, s := range series {
+		if s.TVDBID == tvdbID {
+			return &s, nil
+		}
+	}
+
+	return nil, fmt.Errorf("series with TVDB ID %d not found in collection", tvdbID)
+}
+
+// LookupSeriesByTVDBID looks up series information by TVDB ID
+func (c *SonarrClient) LookupSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.SeriesLookup, error) {
+	path := fmt.Sprintf("/api/v3/series/lookup?term=tvdb:%d", tvdbID)
+	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup series with TVDB ID %d: %w", tvdbID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("series with TVDB ID %d not found", tvdbID)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to lookup series with TVDB ID %d, status: %d", tvdbID, resp.StatusCode)
+	}
+
+	var seriesLookupResults []models.SeriesLookup
+	if err := json.NewDecoder(resp.Body).Decode(&seriesLookupResults); err != nil {
+		return nil, fmt.Errorf("failed to decode series lookup response for TVDB ID %d: %w", tvdbID, err)
+	}
+
+	// Find the series with matching TVDB ID (API might return multiple results)
+	for _, series := range seriesLookupResults {
+		if series.TVDBID == tvdbID {
+			c.logger.Debug("Successfully looked up series with TVDB ID %d: %s", tvdbID, series.Title)
+			return &series, nil
+		}
+	}
+
+	return nil, fmt.Errorf("series with TVDB ID %d not found in lookup results", tvdbID)
 }

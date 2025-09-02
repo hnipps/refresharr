@@ -17,6 +17,11 @@ type MediaItem struct {
 type Series struct {
 	MediaItem
 	SeasonCount int `json:"seasonCount,omitempty"`
+	// Extended fields for TVDB and monitoring (similar to Movie fields)
+	TVDBID           int    `json:"tvdbId,omitempty"`
+	Monitored        bool   `json:"monitored"`
+	QualityProfileID int    `json:"qualityProfileId,omitempty"`
+	RootFolderPath   string `json:"rootFolderPath,omitempty"`
 }
 
 // Movie represents a movie in Radarr
@@ -81,6 +86,18 @@ type MovieLookup struct {
 	} `json:"images,omitempty"`
 }
 
+// SeriesLookup represents a series lookup result from TVDB
+type SeriesLookup struct {
+	TVDBID   int    `json:"tvdbId"`
+	Title    string `json:"title"`
+	Year     int    `json:"year"`
+	Overview string `json:"overview,omitempty"`
+	Images   []struct {
+		CoverType string `json:"coverType"`
+		URL       string `json:"url"`
+	} `json:"images,omitempty"`
+}
+
 // CleanupStats tracks cleanup operation statistics
 type CleanupStats struct {
 	TotalItemsChecked int
@@ -99,8 +116,9 @@ type MissingFileEntry struct {
 	FilePath          string `json:"filePath"`                    // Path to the missing file
 	FileID            int    `json:"fileId"`                      // File ID in the database
 	ProcessedAt       string `json:"processedAt"`                 // Timestamp when processed
-	AddedToCollection bool   `json:"addedToCollection,omitempty"` // Whether the movie was added to the collection
+	AddedToCollection bool   `json:"addedToCollection,omitempty"` // Whether the movie/series was added to the collection
 	TMDBID            int    `json:"tmdbId,omitempty"`            // TMDB ID for movies
+	TVDBID            int    `json:"tvdbId,omitempty"`            // TVDB ID for series
 }
 
 // MissingFilesReport represents a complete missing files report
@@ -137,4 +155,23 @@ func ParseTMDBIDFromPath(filePath string) (int, error) {
 	}
 
 	return tmdbID, nil
+}
+
+// ParseTVDBIDFromPath extracts TVDB ID from a file path
+// Expected format: ...path.../Series Title (Year) [tvdb-12345]/...
+func ParseTVDBIDFromPath(filePath string) (int, error) {
+	// Use regex to find tvdb-### pattern
+	re := regexp.MustCompile(`\[tvdb-(\d+)\]`)
+	matches := re.FindStringSubmatch(filePath)
+
+	if len(matches) < 2 {
+		return 0, fmt.Errorf("TVDB ID not found in path: %s", filePath)
+	}
+
+	tvdbID, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return 0, fmt.Errorf("invalid TVDB ID format in path %s: %w", filePath, err)
+	}
+
+	return tvdbID, nil
 }

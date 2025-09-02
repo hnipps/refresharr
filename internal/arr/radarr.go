@@ -371,3 +371,18 @@ func (c *RadarrClient) makeRequest(ctx context.Context, method, path string, bod
 
 	return c.httpClient.Do(req)
 }
+
+// AddSeries is not applicable for Radarr (returns error)
+func (c *RadarrClient) AddSeries(ctx context.Context, series models.Series) (*models.Series, error) {
+	return nil, fmt.Errorf("AddSeries is not supported by Radarr client")
+}
+
+// GetSeriesByTVDBID is not applicable for Radarr (returns error)
+func (c *RadarrClient) GetSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.Series, error) {
+	return nil, fmt.Errorf("GetSeriesByTVDBID is not supported by Radarr client")
+}
+
+// LookupSeriesByTVDBID is not applicable for Radarr (returns error)
+func (c *RadarrClient) LookupSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.SeriesLookup, error) {
+	return nil, fmt.Errorf("LookupSeriesByTVDBID is not supported by Radarr client")
+}

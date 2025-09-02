@@ -60,6 +60,15 @@ type Client interface {
 	// GetMovieByTMDBID returns a movie by TMDB ID if it exists in the collection
 	GetMovieByTMDBID(ctx context.Context, tmdbID int) (*models.Movie, error)
 
+	// GetSeriesByTVDBID returns a series by TVDB ID if it exists in the collection (Sonarr specific)
+	GetSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.Series, error)
+
+	// LookupSeriesByTVDBID looks up series information by TVDB ID (Sonarr specific)
+	LookupSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.SeriesLookup, error)
+
+	// AddSeries adds a series to the collection (Sonarr specific)
+	AddSeries(ctx context.Context, series models.Series) (*models.Series, error)
+
 	TriggerRefresh(ctx context.Context) error
 }
 

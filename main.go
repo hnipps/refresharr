@@ -66,6 +66,7 @@ func main() {
 			cfg.ConcurrentLimit,
 			cfg.DryRun,
 			cfg.QualityProfileID,
+			cfg.AddMissingMovies,
 		)
 
 		// Run cleanup (with series filtering if applicable)

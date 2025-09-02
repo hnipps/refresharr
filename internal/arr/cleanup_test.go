@@ -124,6 +124,18 @@ func (m *mockClient) AddMovie(ctx context.Context, movie models.Movie) (*models.
 	return nil, errors.New("AddMovie not implemented in mock")
 }
 
+func (m *mockClient) AddSeries(ctx context.Context, series models.Series) (*models.Series, error) {
+	return nil, errors.New("AddSeries not implemented in mock")
+}
+
+func (m *mockClient) GetSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.Series, error) {
+	return nil, errors.New("GetSeriesByTVDBID not implemented in mock")
+}
+
+func (m *mockClient) LookupSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.SeriesLookup, error) {
+	return nil, errors.New("LookupSeriesByTVDBID not implemented in mock")
+}
+
 type mockFileChecker struct {
 	fileExists map[string]bool
 	readable   map[string]bool
