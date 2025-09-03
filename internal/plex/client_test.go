@@ -62,17 +62,17 @@ func TestNewPlexClient(t *testing.T) {
 		Token: "test-token",
 	}
 	logger := &mockLogger{}
-	
+
 	client := newTestPlexClient(cfg, 30*time.Second, logger)
-	
+
 	if client == nil {
 		t.Fatal("NewPlexClient returned nil")
 	}
-	
+
 	if client.baseURL != "http://localhost:32400" {
 		t.Errorf("Expected baseURL to be 'http://localhost:32400', got '%s'", client.baseURL)
 	}
-	
+
 	if client.token != "test-token" {
 		t.Errorf("Expected token to be 'test-token', got '%s'", client.token)
 	}
@@ -80,10 +80,10 @@ func TestNewPlexClient(t *testing.T) {
 
 func TestPlexClient_TestConnection(t *testing.T) {
 	tests := []struct {
-		name           string
-		statusCode     int
-		responseBody   string
-		expectedError  bool
+		name          string
+		statusCode    int
+		responseBody  string
+		expectedError bool
 	}{
 		{
 			name:          "successful connection",
@@ -112,7 +112,7 @@ func TestPlexClient_TestConnection(t *testing.T) {
 				if r.URL.Query().Get("X-Plex-Token") != "test-token" {
 					t.Errorf("Expected X-Plex-Token query param to be 'test-token', got '%s'", r.URL.Query().Get("X-Plex-Token"))
 				}
-				
+
 				w.WriteHeader(tt.statusCode)
 				w.Write([]byte(tt.responseBody))
 			}))
@@ -139,14 +139,14 @@ func TestPlexClient_TestConnection(t *testing.T) {
 
 func TestPlexClient_GetMovieByTMDBID(t *testing.T) {
 	tests := []struct {
-		name           string
-		tmdbID         int
-		sectionsResp   string
-		movieResp      string
-		mediaResp      string
-		expectedError  bool
-		expectedTitle  string
-		expectedAvail  bool
+		name          string
+		tmdbID        int
+		sectionsResp  string
+		movieResp     string
+		mediaResp     string
+		expectedError bool
+		expectedTitle string
+		expectedAvail bool
 	}{
 		{
 			name:   "movie found and available",
@@ -412,11 +412,11 @@ func TestPlexClient_checkMovieAvailability(t *testing.T) {
 
 func TestPlexClient_getLibrarySections(t *testing.T) {
 	tests := []struct {
-		name           string
-		responseBody   string
-		statusCode     int
-		expectedCount  int
-		expectedError  bool
+		name          string
+		responseBody  string
+		statusCode    int
+		expectedCount int
+		expectedError bool
 	}{
 		{
 			name: "successful sections retrieval",
@@ -458,7 +458,7 @@ func TestPlexClient_getLibrarySections(t *testing.T) {
 				if r.URL.Path != "/library/sections" {
 					t.Errorf("Expected path '/library/sections', got '%s'", r.URL.Path)
 				}
-				
+
 				w.WriteHeader(tt.statusCode)
 				w.Write([]byte(tt.responseBody))
 			}))
@@ -498,16 +498,16 @@ func TestPlexClient_makeRequest(t *testing.T) {
 		if r.Header.Get("Accept") != "application/json" {
 			t.Errorf("Expected Accept header to be 'application/json', got '%s'", r.Header.Get("Accept"))
 		}
-		
+
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("Expected Content-Type header to be 'application/json', got '%s'", r.Header.Get("Content-Type"))
 		}
-		
+
 		// Verify token in query params
 		if r.URL.Query().Get("X-Plex-Token") != "test-token" {
 			t.Errorf("Expected X-Plex-Token query param to be 'test-token', got '%s'", r.URL.Query().Get("X-Plex-Token"))
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"success": true}`))
 	}))

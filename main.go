@@ -348,7 +348,7 @@ func runComparePlexCommand(ctx context.Context, cfg *config.Config) {
 	plexMovie, err := plexClient.GetMovieByTMDBID(ctx, tmdbID)
 	if err != nil {
 		logger.Warn("⚠️  Movie with TMDB ID %d not found in Plex: %s", tmdbID, err.Error())
-		
+
 		// Generate comparison report
 		logger.Info("\n📊 COMPARISON REPORT")
 		logger.Info("==================")
@@ -357,7 +357,7 @@ func runComparePlexCommand(ctx context.Context, cfg *config.Config) {
 		logger.Info("Radarr Status: %s", getFileStatusText(radarrHasFile))
 		logger.Info("Plex Status: Not Found")
 		logger.Info("Match Status: ❌ MISMATCH - Movie not in Plex library")
-		
+
 		if radarrHasFile {
 			logger.Info("⚠️  Radarr shows file available but movie not found in Plex")
 			logger.Info("💡 Suggestion: Check if Plex library is scanning the correct directories")

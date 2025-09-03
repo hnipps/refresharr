@@ -1,35 +1,33 @@
 package arr
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/hnipps/refresharr/internal/config"
 	"github.com/hnipps/refresharr/pkg/models"
+	"golift.io/starr"
+	"golift.io/starr/sonarr"
 )
 
 // SonarrClient implements the Client interface for Sonarr API
 type SonarrClient struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
-	logger     Logger
+	client *sonarr.Sonarr
+	logger Logger
 }
 
 // NewSonarrClient creates a new Sonarr client
 func NewSonarrClient(cfg *config.SonarrConfig, timeout time.Duration, logger Logger) Client {
+	// Create starr config
+	starrConfig := starr.New(cfg.APIKey, cfg.URL, timeout)
+
+	// Create sonarr client
+	sonarrClient := sonarr.New(starrConfig)
+
 	return &SonarrClient{
-		baseURL: strings.TrimRight(cfg.URL, "/"),
-		apiKey:  cfg.APIKey,
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
+		client: sonarrClient,
 		logger: logger,
 	}
 }
@@ -41,14 +39,9 @@ func (c *SonarrClient) GetName() string {
 
 // TestConnection verifies the connection to Sonarr
 func (c *SonarrClient) TestConnection(ctx context.Context) error {
-	resp, err := c.makeRequest(ctx, "GET", "/api/v3/system/status", nil)
+	_, err := c.client.GetSystemStatusContext(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to connect to Sonarr: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Sonarr returned status %d", resp.StatusCode)
 	}
 
 	c.logger.Info("✅ Successfully connected to Sonarr")
@@ -57,23 +50,14 @@ func (c *SonarrClient) TestConnection(ctx context.Context) error {
 
 // GetAllSeries returns all series from Sonarr
 func (c *SonarrClient) GetAllSeries(ctx context.Context) ([]models.Series, error) {
-	resp, err := c.makeRequest(ctx, "GET", "/api/v3/series", nil)
+	series, err := c.client.GetAllSeriesContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch series: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch series, status: %d", resp.StatusCode)
-	}
-
-	var series []models.Series
-	if err := json.NewDecoder(resp.Body).Decode(&series); err != nil {
-		return nil, fmt.Errorf("failed to decode series response: %w", err)
-	}
-
-	c.logger.Debug("Fetched %d series from Sonarr", len(series))
-	return series, nil
+	result := mapSonarrSeriesToModelsList(series)
+	c.logger.Debug("Fetched %d series from Sonarr", len(result))
+	return result, nil
 }
 
 // GetAllMovies is not applicable for Sonarr (returns nil)
@@ -88,62 +72,40 @@ func (c *SonarrClient) GetMovie(ctx context.Context, movieID int) (*models.Movie
 
 // GetEpisodesForSeries returns all episodes for a given series
 func (c *SonarrClient) GetEpisodesForSeries(ctx context.Context, seriesID int) ([]models.Episode, error) {
-	path := fmt.Sprintf("/api/v3/episode?seriesId=%d", seriesID)
-	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	getEpisode := &sonarr.GetEpisode{
+		SeriesID: int64(seriesID),
+	}
+
+	episodes, err := c.client.GetSeriesEpisodesContext(ctx, getEpisode)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch episodes for series %d: %w", seriesID, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch episodes for series %d, status: %d", seriesID, resp.StatusCode)
-	}
-
-	var episodes []models.Episode
-	if err := json.NewDecoder(resp.Body).Decode(&episodes); err != nil {
-		return nil, fmt.Errorf("failed to decode episodes response for series %d: %w", seriesID, err)
-	}
-
-	c.logger.Debug("Fetched %d episodes for series %d", len(episodes), seriesID)
-	return episodes, nil
+	result := mapSonarrEpisodesToModelsList(episodes)
+	c.logger.Debug("Fetched %d episodes for series %d", len(result), seriesID)
+	return result, nil
 }
 
 // GetEpisodeFile returns episode file details
 func (c *SonarrClient) GetEpisodeFile(ctx context.Context, fileID int) (*models.EpisodeFile, error) {
-	path := fmt.Sprintf("/api/v3/episodefile/%d", fileID)
-	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	episodeFiles, err := c.client.GetEpisodeFilesContext(ctx, int64(fileID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch episode file %d: %w", fileID, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotFound {
+	if len(episodeFiles) == 0 {
 		return nil, fmt.Errorf("episode file %d not found", fileID)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch episode file %d, status: %d", fileID, resp.StatusCode)
-	}
-
-	var episodeFile models.EpisodeFile
-	if err := json.NewDecoder(resp.Body).Decode(&episodeFile); err != nil {
-		return nil, fmt.Errorf("failed to decode episode file response for %d: %w", fileID, err)
-	}
-
-	return &episodeFile, nil
+	result := mapSonarrEpisodeFileToModels(episodeFiles[0])
+	return &result, nil
 }
 
 // DeleteEpisodeFile deletes an episode file record
 func (c *SonarrClient) DeleteEpisodeFile(ctx context.Context, fileID int) error {
-	path := fmt.Sprintf("/api/v3/episodefile/%d", fileID)
-	resp, err := c.makeRequest(ctx, "DELETE", path, nil)
+	err := c.client.DeleteEpisodeFileContext(ctx, int64(fileID))
 	if err != nil {
 		return fmt.Errorf("failed to delete episode file %d: %w", fileID, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("failed to delete episode file %d, status: %d", fileID, resp.StatusCode)
 	}
 
 	c.logger.Debug("Successfully deleted episode file %d", fileID)
@@ -152,44 +114,22 @@ func (c *SonarrClient) DeleteEpisodeFile(ctx context.Context, fileID int) error 
 
 // UpdateEpisode updates an episode's metadata
 func (c *SonarrClient) UpdateEpisode(ctx context.Context, episode models.Episode) error {
-	// First, fetch the current episode data to ensure we have the complete object
-	path := fmt.Sprintf("/api/v3/episode/%d", episode.ID)
-	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	// First get the current episode data
+	currentEpisode, err := c.client.GetEpisodeByIDContext(ctx, int64(episode.ID))
 	if err != nil {
 		return fmt.Errorf("failed to fetch current episode %d data: %w", episode.ID, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to fetch current episode %d data, status: %d", episode.ID, resp.StatusCode)
-	}
-
-	var currentEpisode models.Episode
-	if err := json.NewDecoder(resp.Body).Decode(&currentEpisode); err != nil {
-		return fmt.Errorf("failed to decode current episode %d data: %w", episode.ID, err)
 	}
 
 	// Update the file reference fields
 	currentEpisode.HasFile = false
-	currentEpisode.EpisodeFileID = nil
+	currentEpisode.EpisodeFileID = 0
 
-	// Marshal the complete episode object
-	jsonData, err := json.Marshal(currentEpisode)
-	if err != nil {
-		return fmt.Errorf("failed to marshal episode update: %w", err)
-	}
-
-	// Send the PUT request with the complete episode object
-	resp, err = c.makeRequest(ctx, "PUT", path, bytes.NewBuffer(jsonData))
+	// Update the episode using starr's MonitorEpisode method
+	// Note: starr doesn't have a direct update episode method, so we use MonitorEpisode
+	// with monitoring set to current state to trigger an update
+	_, err = c.client.MonitorEpisodeContext(ctx, []int64{int64(episode.ID)}, currentEpisode.Monitored)
 	if err != nil {
 		return fmt.Errorf("failed to update episode %d: %w", episode.ID, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		// Get response body for better error reporting
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to update episode %d, status: %d, response: %s", episode.ID, resp.StatusCode, string(bodyBytes))
 	}
 
 	c.logger.Debug("Successfully updated episode %d", episode.ID)
@@ -213,44 +153,26 @@ func (c *SonarrClient) UpdateMovie(ctx context.Context, movie models.Movie) erro
 
 // GetRootFolders returns all root folders from Sonarr
 func (c *SonarrClient) GetRootFolders(ctx context.Context) ([]models.RootFolder, error) {
-	resp, err := c.makeRequest(ctx, "GET", "/api/v3/rootfolder", nil)
+	rootFolders, err := c.client.GetRootFoldersContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch root folders: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch root folders, status: %d", resp.StatusCode)
-	}
-
-	var rootFolders []models.RootFolder
-	if err := json.NewDecoder(resp.Body).Decode(&rootFolders); err != nil {
-		return nil, fmt.Errorf("failed to decode root folders response: %w", err)
-	}
-
-	c.logger.Debug("Fetched %d root folders from Sonarr", len(rootFolders))
-	return rootFolders, nil
+	result := mapSonarrRootFoldersToModelsList(rootFolders)
+	c.logger.Debug("Fetched %d root folders from Sonarr", len(result))
+	return result, nil
 }
 
 // GetQualityProfiles returns all quality profiles from Sonarr
 func (c *SonarrClient) GetQualityProfiles(ctx context.Context) ([]models.QualityProfile, error) {
-	resp, err := c.makeRequest(ctx, "GET", "/api/v3/qualityprofile", nil)
+	qualityProfiles, err := c.client.GetQualityProfilesContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch quality profiles: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch quality profiles, status: %d", resp.StatusCode)
-	}
-
-	var qualityProfiles []models.QualityProfile
-	if err := json.NewDecoder(resp.Body).Decode(&qualityProfiles); err != nil {
-		return nil, fmt.Errorf("failed to decode quality profiles response: %w", err)
-	}
-
-	c.logger.Debug("Fetched %d quality profiles from Sonarr", len(qualityProfiles))
-	return qualityProfiles, nil
+	result := mapSonarrQualityProfilesToModelsList(qualityProfiles)
+	c.logger.Debug("Fetched %d quality profiles from Sonarr", len(result))
+	return result, nil
 }
 
 // LookupMovieByTMDBID is not applicable for Sonarr (returns error)
@@ -270,87 +192,59 @@ func (c *SonarrClient) AddMovie(ctx context.Context, movie models.Movie) (*model
 
 // TriggerRefresh triggers a missing episode search
 func (c *SonarrClient) TriggerRefresh(ctx context.Context) error {
-	command := map[string]string{
-		"name": "MissingEpisodeSearch",
+	command := &sonarr.CommandRequest{
+		Name: "MissingEpisodeSearch",
 	}
 
-	jsonData, err := json.Marshal(command)
-	if err != nil {
-		return fmt.Errorf("failed to marshal refresh command: %w", err)
-	}
-
-	resp, err := c.makeRequest(ctx, "POST", "/api/v3/command", bytes.NewBuffer(jsonData))
+	_, err := c.client.SendCommandContext(ctx, command)
 	if err != nil {
 		return fmt.Errorf("failed to trigger refresh: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to trigger refresh, status: %d", resp.StatusCode)
 	}
 
 	c.logger.Info("✅ Refresh triggered successfully")
 	return nil
 }
 
-// makeRequest makes an HTTP request to the Sonarr API
-func (c *SonarrClient) makeRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
-	url := c.baseURL + path
-
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Add API key header
-	req.Header.Set("X-Api-Key", c.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	c.logger.Debug("Making %s request to %s", method, url)
-
-	return c.httpClient.Do(req)
-}
-
 // AddSeries adds a series to the Sonarr collection
 func (c *SonarrClient) AddSeries(ctx context.Context, series models.Series) (*models.Series, error) {
-	// Marshal the series object
-	jsonData, err := json.Marshal(series)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal series for addition: %w", err)
+	// Convert models.Series to sonarr.AddSeriesInput
+	addSeriesInput := &sonarr.AddSeriesInput{
+		Title:            series.Title,
+		TvdbID:           int64(series.TVDBID),
+		Path:             series.Path,
+		QualityProfileID: int64(series.QualityProfileID),
+		RootFolderPath:   series.RootFolderPath,
+		Monitored:        series.Monitored,
+		SeasonFolder:     true, // Default to true
 	}
 
-	resp, err := c.makeRequest(ctx, "POST", "/api/v3/series", bytes.NewBuffer(jsonData))
+	addedSeries, err := c.client.AddSeriesContext(ctx, addSeriesInput)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add series: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		// Get response body for better error reporting
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to add series, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var addedSeries models.Series
-	if err := json.NewDecoder(resp.Body).Decode(&addedSeries); err != nil {
-		return nil, fmt.Errorf("failed to decode added series response: %w", err)
-	}
-
-	c.logger.Info("✅ Successfully added series: %s with TVDB ID %d", addedSeries.Title, addedSeries.TVDBID)
-	return &addedSeries, nil
+	result := mapSonarrSeriesToModels(addedSeries)
+	c.logger.Info("✅ Successfully added series: %s with TVDB ID %d", result.Title, result.TVDBID)
+	return &result, nil
 }
 
 // GetSeriesByTVDBID returns a series by TVDB ID if it exists in the collection
 func (c *SonarrClient) GetSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.Series, error) {
-	// Get all series and find the one with matching TVDB ID
-	series, err := c.GetAllSeries(ctx)
+	// Get series by TVDB ID using starr's GetSeries method
+	series, err := c.client.GetSeriesContext(ctx, int64(tvdbID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch series to search for TVDB ID %d: %w", tvdbID, err)
+		return nil, fmt.Errorf("failed to fetch series with TVDB ID %d: %w", tvdbID, err)
 	}
 
+	if len(series) == 0 {
+		return nil, fmt.Errorf("series with TVDB ID %d not found in collection", tvdbID)
+	}
+
+	// Find the series with matching TVDB ID
 	for _, s := range series {
-		if s.TVDBID == tvdbID {
-			return &s, nil
+		if int(s.TvdbID) == tvdbID {
+			result := mapSonarrSeriesToModels(s)
+			return &result, nil
 		}
 	}
 
@@ -359,31 +253,38 @@ func (c *SonarrClient) GetSeriesByTVDBID(ctx context.Context, tvdbID int) (*mode
 
 // LookupSeriesByTVDBID looks up series information by TVDB ID
 func (c *SonarrClient) LookupSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.SeriesLookup, error) {
-	path := fmt.Sprintf("/api/v3/series/lookup?term=tvdb:%d", tvdbID)
-	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	term := fmt.Sprintf("tvdb:%d", tvdbID)
+	series, err := c.client.GetSeriesLookupContext(ctx, term, int64(tvdbID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup series with TVDB ID %d: %w", tvdbID, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotFound {
+	if len(series) == 0 {
 		return nil, fmt.Errorf("series with TVDB ID %d not found", tvdbID)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to lookup series with TVDB ID %d, status: %d", tvdbID, resp.StatusCode)
-	}
-
-	var seriesLookupResults []models.SeriesLookup
-	if err := json.NewDecoder(resp.Body).Decode(&seriesLookupResults); err != nil {
-		return nil, fmt.Errorf("failed to decode series lookup response for TVDB ID %d: %w", tvdbID, err)
-	}
-
 	// Find the series with matching TVDB ID (API might return multiple results)
-	for _, series := range seriesLookupResults {
-		if series.TVDBID == tvdbID {
-			c.logger.Debug("Successfully looked up series with TVDB ID %d: %s", tvdbID, series.Title)
-			return &series, nil
+	for _, s := range series {
+		if int(s.TvdbID) == tvdbID {
+			result := &models.SeriesLookup{
+				TVDBID:   int(s.TvdbID),
+				Title:    s.Title,
+				Year:     s.Year,
+				Overview: s.Overview,
+				Images: make([]struct {
+					CoverType string `json:"coverType"`
+					URL       string `json:"url"`
+				}, len(s.Images)),
+			}
+
+			// Map images if present
+			for i, img := range s.Images {
+				result.Images[i].CoverType = img.CoverType
+				result.Images[i].URL = img.URL
+			}
+
+			c.logger.Debug("Successfully looked up series with TVDB ID %d: %s", tvdbID, result.Title)
+			return result, nil
 		}
 	}
 
@@ -392,101 +293,75 @@ func (c *SonarrClient) LookupSeriesByTVDBID(ctx context.Context, tvdbID int) (*m
 
 // GetQueue returns all items in the download queue
 func (c *SonarrClient) GetQueue(ctx context.Context) ([]models.QueueItem, error) {
-	resp, err := c.makeRequest(ctx, "GET", "/api/v3/queue", nil)
+	queue, err := c.client.GetQueueContext(ctx, 0, 0) // Get all records
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch queue: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch queue, status: %d", resp.StatusCode)
-	}
-
-	var queueResponse models.QueueResponse
-	if err := json.NewDecoder(resp.Body).Decode(&queueResponse); err != nil {
-		return nil, fmt.Errorf("failed to decode queue response: %w", err)
-	}
-
-	c.logger.Debug("Fetched %d items from queue", len(queueResponse.Records))
-	return queueResponse.Records, nil
+	result := mapSonarrQueueToModelsList(queue)
+	c.logger.Debug("Fetched %d items from queue", len(result))
+	return result, nil
 }
 
 // GetQueueDetails returns detailed information about a specific queue item
 func (c *SonarrClient) GetQueueDetails(ctx context.Context, queueID int) (*models.QueueItem, error) {
-	path := fmt.Sprintf("/api/v3/queue/%d", queueID)
-	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	// starr doesn't have a method to get a specific queue item by ID
+	// so we'll get all queue items and find the one with matching ID
+	queue, err := c.client.GetQueueContext(ctx, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch queue details for ID %d: %w", queueID, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("queue item %d not found", queueID)
+	// Find the queue item with matching ID
+	for _, qr := range queue.Records {
+		if int(qr.ID) == queueID {
+			result := mapSonarrQueueRecordToModels(qr)
+			return &result, nil
+		}
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch queue details for ID %d, status: %d", queueID, resp.StatusCode)
-	}
-
-	var queueItem models.QueueItem
-	if err := json.NewDecoder(resp.Body).Decode(&queueItem); err != nil {
-		return nil, fmt.Errorf("failed to decode queue details response for ID %d: %w", queueID, err)
-	}
-
-	return &queueItem, nil
+	return nil, fmt.Errorf("queue item %d not found", queueID)
 }
 
 // RemoveFromQueue removes an item from the queue
 func (c *SonarrClient) RemoveFromQueue(ctx context.Context, queueID int, removeFromClient bool) error {
-	path := fmt.Sprintf("/api/v3/queue/%d", queueID)
+	// Create queue delete options
+	opts := &starr.QueueDeleteOpts{
+		RemoveFromClient: &removeFromClient,
+		BlockList:        false,
+		SkipRedownload:   false,
+		ChangeCategory:   false,
+	}
 
-	// Construct query parameters
-	params := fmt.Sprintf("?removeFromClient=%t&blocklist=false", removeFromClient)
-
-	resp, err := c.makeRequest(ctx, "DELETE", path+params, nil)
+	err := c.client.DeleteQueueContext(ctx, int64(queueID), opts)
 	if err != nil {
+		// Check if it's a "not found" error - this is common and not a real error
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {
+			c.logger.Debug("Queue item %d not found (already removed)", queueID)
+			return nil
+		}
 		return fmt.Errorf("failed to remove queue item %d: %w", queueID, err)
 	}
-	defer resp.Body.Close()
 
-	// Handle different status codes
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusNoContent:
-		// Successfully removed
-		c.logger.Debug("Successfully removed queue item %d", queueID)
-		return nil
-	case http.StatusNotFound:
-		// Item not found - likely already removed (common with season packs)
-		// This is not an error, just means the item was already cleaned up
-		c.logger.Debug("Queue item %d not found (already removed)", queueID)
-		return nil
-	default:
-		return fmt.Errorf("failed to remove queue item %d, status: %d", queueID, resp.StatusCode)
-	}
+	c.logger.Debug("Successfully removed queue item %d", queueID)
+	return nil
 }
 
 // TriggerDownloadClientScan triggers a scan of completed downloads
 func (c *SonarrClient) TriggerDownloadClientScan(ctx context.Context) error {
-	command := map[string]string{
-		"name": "DownloadedEpisodesScan",
+	command := &sonarr.CommandRequest{
+		Name: "DownloadedEpisodesScan",
 	}
 
-	jsonData, err := json.Marshal(command)
+	_, err := c.client.SendCommandContext(ctx, command)
 	if err != nil {
-		return fmt.Errorf("failed to marshal download client scan command: %w", err)
-	}
-
-	resp, err := c.makeRequest(ctx, "POST", "/api/v3/command", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to trigger download client scan: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		// For Sonarr v4+, the DownloadedEpisodesScan command may not be available
 		// This is expected and not an error - we'll fall back to other methods
-		c.logger.Debug("Download client scan command not available (likely Sonarr v4+), status: %d", resp.StatusCode)
-		return nil
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {
+			c.logger.Debug("Download client scan command not available (likely Sonarr v4+)")
+			return nil
+		}
+		return fmt.Errorf("failed to trigger download client scan: %w", err)
 	}
 
 	c.logger.Debug("Successfully triggered download client scan")
@@ -495,49 +370,36 @@ func (c *SonarrClient) TriggerDownloadClientScan(ctx context.Context) error {
 
 // GetManualImport gets files available for manual import from a folder
 func (c *SonarrClient) GetManualImport(ctx context.Context, folder string) ([]models.ManualImportItem, error) {
-	path := fmt.Sprintf("/api/v3/manualimport?folder=%s&filterExistingFiles=true", folder)
-	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	params := &sonarr.ManualImportParams{
+		Folder:              folder,
+		FilterExistingFiles: true,
+	}
+
+	manualImportOutput, err := c.client.ManualImportContext(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch manual import items for folder %s: %w", folder, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch manual import items for folder %s, status: %d", folder, resp.StatusCode)
+	// Convert from starr ManualImportOutput to our models
+	result := make([]models.ManualImportItem, 0)
+	if manualImportOutput != nil {
+		result = append(result, mapSonarrManualImportToModels(manualImportOutput))
 	}
 
-	var manualImportItems []models.ManualImportItem
-	if err := json.NewDecoder(resp.Body).Decode(&manualImportItems); err != nil {
-		return nil, fmt.Errorf("failed to decode manual import response for folder %s: %w", folder, err)
-	}
-
-	c.logger.Debug("Found %d manual import items in folder %s", len(manualImportItems), folder)
-	return manualImportItems, nil
+	c.logger.Debug("Found %d manual import items in folder %s", len(result), folder)
+	return result, nil
 }
 
 // ExecuteManualImport executes manual import for the specified files
 func (c *SonarrClient) ExecuteManualImport(ctx context.Context, files []models.ManualImportItem, importMode string) error {
-	command := map[string]interface{}{
-		"name":       "ManualImport",
-		"files":      files,
-		"importMode": importMode,
-	}
+	// Convert each manual import item to starr format and process individually
+	for _, file := range files {
+		manualImportInput := mapModelsManualImportToSonarr(file)
 
-	jsonData, err := json.Marshal(command)
-	if err != nil {
-		return fmt.Errorf("failed to marshal manual import command: %w", err)
-	}
-
-	resp, err := c.makeRequest(ctx, "POST", "/api/v3/command", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to execute manual import: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		// Get response body for better error reporting
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to execute manual import, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
+		err := c.client.ManualImportReprocessContext(ctx, manualImportInput)
+		if err != nil {
+			return fmt.Errorf("failed to execute manual import for file %s: %w", file.Path, err)
+		}
 	}
 
 	c.logger.Debug("Successfully initiated manual import for %d files", len(files))
@@ -546,43 +408,27 @@ func (c *SonarrClient) ExecuteManualImport(ctx context.Context, files []models.M
 
 // GetManualImportWithParams gets files available for manual import with additional parameters
 func (c *SonarrClient) GetManualImportWithParams(ctx context.Context, folder, downloadID string, seriesID int, filterExisting bool) ([]models.ManualImportItem, error) {
-	// Build query parameters similar to golift.io/starr ManualImportParams
-	var params []string
-	if folder != "" {
-		params = append(params, fmt.Sprintf("folder=%s", folder))
+	params := &sonarr.ManualImportParams{
+		Folder:              folder,
+		DownloadID:          downloadID,
+		FilterExistingFiles: filterExisting,
 	}
-	if downloadID != "" {
-		params = append(params, fmt.Sprintf("downloadId=%s", downloadID))
-	}
+
 	if seriesID > 0 {
-		params = append(params, fmt.Sprintf("seriesId=%d", seriesID))
-	}
-	if filterExisting {
-		params = append(params, "filterExistingFiles=true")
+		params.SeriesID = int64(seriesID)
 	}
 
-	var path string
-	if len(params) > 0 {
-		path = fmt.Sprintf("/api/v3/manualimport?%s", strings.Join(params, "&"))
-	} else {
-		path = "/api/v3/manualimport"
-	}
-
-	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	manualImportOutput, err := c.client.ManualImportContext(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch manual import items: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch manual import items, status: %d", resp.StatusCode)
+	// Convert from starr ManualImportOutput to our models
+	result := make([]models.ManualImportItem, 0)
+	if manualImportOutput != nil {
+		result = append(result, mapSonarrManualImportToModels(manualImportOutput))
 	}
 
-	var manualImportItems []models.ManualImportItem
-	if err := json.NewDecoder(resp.Body).Decode(&manualImportItems); err != nil {
-		return nil, fmt.Errorf("failed to decode manual import response: %w", err)
-	}
-
-	c.logger.Debug("Found %d manual import items with custom parameters", len(manualImportItems))
-	return manualImportItems, nil
+	c.logger.Debug("Found %d manual import items with custom parameters", len(result))
+	return result, nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/hnipps/refresharr/internal/config"
 	"github.com/hnipps/refresharr/pkg/models"
+	"golift.io/starr/sonarr"
 )
 
 func TestNewSonarrClient(t *testing.T) {
@@ -185,19 +186,21 @@ func TestSonarrClient_GetEpisodesForSeries_Success(t *testing.T) {
 }
 
 func TestSonarrClient_GetEpisodeFile_Success(t *testing.T) {
-	expectedFile := &models.EpisodeFile{
-		ID:   100,
-		Path: "/path/to/episode.mkv",
+	expectedFiles := []*sonarr.EpisodeFile{
+		{
+			ID:   100,
+			Path: "/path/to/episode.mkv",
+		},
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		expectedPath := "/api/v3/episodefile/100"
+		expectedPath := "/api/v3/episodeFile"
 		if r.URL.Path != expectedPath {
 			t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expectedFile)
+		json.NewEncoder(w).Encode(expectedFiles)
 	}))
 	defer server.Close()
 
@@ -215,6 +218,10 @@ func TestSonarrClient_GetEpisodeFile_Success(t *testing.T) {
 		t.Errorf("GetEpisodeFile() failed: %v", err)
 	}
 
+	if file == nil {
+		t.Fatal("GetEpisodeFile() returned nil")
+	}
+
 	if file.ID != 100 || file.Path != "/path/to/episode.mkv" {
 		t.Errorf("Expected file 100 '/path/to/episode.mkv', got %d '%s'", file.ID, file.Path)
 	}
@@ -222,7 +229,7 @@ func TestSonarrClient_GetEpisodeFile_Success(t *testing.T) {
 
 func TestSonarrClient_DeleteEpisodeFile_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		expectedPath := "/api/v3/episodefile/100"
+		expectedPath := "/api/v3/episodeFile/100"
 		if r.URL.Path != expectedPath {
 			t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
 		}
@@ -259,33 +266,43 @@ func TestSonarrClient_UpdateEpisode_Success(t *testing.T) {
 		HasFile:       false,
 	}
 
+	sonarrEpisode := &sonarr.Episode{
+		ID:            1,
+		SeriesID:      10,
+		SeasonNumber:  1,
+		EpisodeNumber: 1,
+		Title:         "Updated Title",
+		HasFile:       false,
+		Monitored:     true,
+	}
+
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		expectedPath := "/api/v3/episode/1"
-		if r.URL.Path != expectedPath {
-			t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
-		}
-
 		callCount++
 		if callCount == 1 {
 			// First call should be GET to fetch current episode data
+			expectedPath := "/api/v3/episode/1"
+			if r.URL.Path != expectedPath {
+				t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
+			}
 			if r.Method != "GET" {
 				t.Errorf("Expected GET method on first call, got '%s'", r.Method)
 			}
 			// Return the current episode data
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(episode)
+			json.NewEncoder(w).Encode(sonarrEpisode)
 		} else if callCount == 2 {
-			// Second call should be PUT to update the episode
+			// Second call should be PUT to monitor/update the episode
+			expectedPath := "/api/v3/episode/monitor"
+			if r.URL.Path != expectedPath {
+				t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
+			}
 			if r.Method != "PUT" {
 				t.Errorf("Expected PUT method on second call, got '%s'", r.Method)
 			}
-			// Verify that we received a request body
-			if r.ContentLength == 0 {
-				t.Error("Expected request body, got empty body")
-			}
+			// Return array of episodes as expected by MonitorEpisode
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(episode)
+			json.NewEncoder(w).Encode([]*sonarr.Episode{sonarrEpisode})
 		} else {
 			t.Errorf("Unexpected third call to UpdateEpisode")
 		}

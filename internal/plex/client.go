@@ -24,12 +24,12 @@ type PlexClient struct {
 
 // PlexMovie represents a movie in Plex
 type PlexMovie struct {
-	Key           string `json:"key"`
-	Title         string `json:"title"`
-	Year          int    `json:"year"`
-	GUID          string `json:"guid"`
-	Available     bool   `json:"-"` // Computed field
-	MediaParts    []MediaPart `json:"-"` // Media parts for availability check
+	Key        string      `json:"key"`
+	Title      string      `json:"title"`
+	Year       int         `json:"year"`
+	GUID       string      `json:"guid"`
+	Available  bool        `json:"-"` // Computed field
+	MediaParts []MediaPart `json:"-"` // Media parts for availability check
 }
 
 // MediaPart represents a media part in Plex
@@ -89,7 +89,7 @@ func (c *PlexClient) TestConnection(ctx context.Context) error {
 func (c *PlexClient) GetMovieByTMDBID(ctx context.Context, tmdbID int) (*PlexMovie, error) {
 	// Search for the movie using TMDB GUID
 	tmdbGUID := fmt.Sprintf("tmdb://%d", tmdbID)
-	
+
 	// Get all movies from library sections
 	sections, err := c.getLibrarySections(ctx)
 	if err != nil {
