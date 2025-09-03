@@ -412,7 +412,12 @@ func (c *RadarrClient) GetManualImport(ctx context.Context, folder string) ([]mo
 	return nil, fmt.Errorf("GetManualImport is not supported by Radarr client")
 }
 
-// ExecuteManualImport is not applicable for Radarr (returns error)  
+// GetManualImportWithParams is not applicable for Radarr (returns error)
+func (c *RadarrClient) GetManualImportWithParams(ctx context.Context, folder, downloadID string, seriesID int, filterExisting bool) ([]models.ManualImportItem, error) {
+	return nil, fmt.Errorf("GetManualImportWithParams is not supported by Radarr client")
+}
+
+// ExecuteManualImport is not applicable for Radarr (returns error)
 func (c *RadarrClient) ExecuteManualImport(ctx context.Context, files []models.ManualImportItem, importMode string) error {
 	return fmt.Errorf("ExecuteManualImport is not supported by Radarr client")
 }

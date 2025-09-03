@@ -156,6 +156,10 @@ func (m *mockClient) GetManualImport(ctx context.Context, folder string) ([]mode
 	return []models.ManualImportItem{}, nil
 }
 
+func (m *mockClient) GetManualImportWithParams(ctx context.Context, folder, downloadID string, seriesID int, filterExisting bool) ([]models.ManualImportItem, error) {
+	return []models.ManualImportItem{}, nil
+}
+
 func (m *mockClient) ExecuteManualImport(ctx context.Context, files []models.ManualImportItem, importMode string) error {
 	return nil
 }

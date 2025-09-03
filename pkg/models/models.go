@@ -172,6 +172,11 @@ type QueueItem struct {
 	StatusMessages []StatusMessage `json:"statusMessages,omitempty"`
 	ErrorMessage   string          `json:"errorMessage,omitempty"`
 	Size           int64           `json:"size,omitempty"`
+	// Additional fields needed for manual import
+	DownloadID     string `json:"downloadId,omitempty"`
+	OutputPath     string `json:"outputPath,omitempty"`
+	Protocol       string `json:"protocol,omitempty"`
+	DownloadClient string `json:"downloadClient,omitempty"`
 }
 
 // StatusMessage represents a status message in the queue
@@ -196,19 +201,19 @@ type ImportFixResult struct {
 
 // ManualImportItem represents a file available for manual import
 type ManualImportItem struct {
-	ID           int      `json:"id,omitempty"`
-	Path         string   `json:"path"`
-	RelativePath string   `json:"relativePath"`
-	FolderName   string   `json:"folderName"`
-	Name         string   `json:"name"`
-	Size         int64    `json:"size"`
-	Series       *Series  `json:"series,omitempty"`
-	SeasonNumber *int     `json:"seasonNumber,omitempty"`
-	Episodes     []Episode `json:"episodes,omitempty"`
-	Quality      *Quality `json:"quality,omitempty"`
-	QualityWeight int     `json:"qualityWeight,omitempty"`
-	DownloadID   string   `json:"downloadId,omitempty"`
-	Rejections   []string `json:"rejections,omitempty"`
+	ID            int       `json:"id,omitempty"`
+	Path          string    `json:"path"`
+	RelativePath  string    `json:"relativePath"`
+	FolderName    string    `json:"folderName"`
+	Name          string    `json:"name"`
+	Size          int64     `json:"size"`
+	Series        *Series   `json:"series,omitempty"`
+	SeasonNumber  *int      `json:"seasonNumber,omitempty"`
+	Episodes      []Episode `json:"episodes,omitempty"`
+	Quality       *Quality  `json:"quality,omitempty"`
+	QualityWeight int       `json:"qualityWeight,omitempty"`
+	DownloadID    string    `json:"downloadId,omitempty"`
+	Rejections    []string  `json:"rejections,omitempty"`
 }
 
 // Expected format: ...path.../Series Title (Year) [tvdb-12345]/...

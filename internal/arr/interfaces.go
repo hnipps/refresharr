@@ -75,10 +75,11 @@ type Client interface {
 	GetQueue(ctx context.Context) ([]models.QueueItem, error)
 	GetQueueDetails(ctx context.Context, queueID int) (*models.QueueItem, error)
 	RemoveFromQueue(ctx context.Context, queueID int, removeFromClient bool) error
-	
+
 	// Manual import methods for importing downloaded files
 	TriggerDownloadClientScan(ctx context.Context) error
 	GetManualImport(ctx context.Context, folder string) ([]models.ManualImportItem, error)
+	GetManualImportWithParams(ctx context.Context, folder, downloadID string, seriesID int, filterExisting bool) ([]models.ManualImportItem, error)
 	ExecuteManualImport(ctx context.Context, files []models.ManualImportItem, importMode string) error
 }
 

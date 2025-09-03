@@ -59,6 +59,20 @@ func (f *ImportFixer) AnalyzeStuckImports(ctx context.Context) ([]models.QueueIt
 		sizeMB := float64(item.Size) / (1024 * 1024)
 		f.logger.Info("  ID: %d | %s - %s (%.2f MB)", item.ID, seriesTitle, item.Title, sizeMB)
 
+		// Show additional queue item details if available
+		if item.DownloadID != "" {
+			f.logger.Info("    DownloadID: %s", item.DownloadID)
+		}
+		if item.OutputPath != "" {
+			f.logger.Info("    OutputPath: %s", item.OutputPath)
+		}
+		if item.Protocol != "" {
+			f.logger.Info("    Protocol: %s", item.Protocol)
+		}
+		if item.DownloadClient != "" {
+			f.logger.Info("    DownloadClient: %s", item.DownloadClient)
+		}
+
 		// Show status messages if available
 		for i, msg := range item.StatusMessages {
 			if i >= 3 { // Limit to first 3 messages
@@ -158,7 +172,7 @@ func (f *ImportFixer) FixImports(ctx context.Context, removeFromClient bool) (*m
 
 		// Attempt manual import
 		imported := f.attemptManualImport(ctx, item)
-		
+
 		if imported {
 			f.logger.Info("  ✓ Successfully imported via manual import")
 			result.FixedItems++
@@ -171,9 +185,9 @@ func (f *ImportFixer) FixImports(ctx context.Context, removeFromClient bool) (*m
 		}
 	}
 
-	f.logger.Info("Import results: %d/%d successfully imported, %d left in queue for manual resolution", 
+	f.logger.Info("Import results: %d/%d successfully imported, %d left in queue for manual resolution",
 		result.FixedItems, result.TotalStuckItems, result.TotalStuckItems-result.FixedItems)
-	
+
 	if len(result.Errors) > 0 {
 		f.logger.Info("Items requiring manual attention:")
 		for _, errMsg := range result.Errors {
@@ -190,26 +204,242 @@ func (f *ImportFixer) TestConnection(ctx context.Context) error {
 
 // attemptManualImport tries to manually import a stuck queue item
 func (f *ImportFixer) attemptManualImport(ctx context.Context, item models.QueueItem) bool {
-	// For manual import to work, we need to find the download folder
-	// We'll try to extract folder information from the queue item
-	
-	// Since we don't have direct access to the download path from queue items,
-	// we'll use a heuristic approach:
-	// 1. Try to find the series root folder
-	// 2. Look for common download folder patterns
-	
 	if item.Series == nil {
 		f.logger.Debug("  → No series information available for manual import")
 		return false
 	}
-	
-	// For now, we'll use a simplified approach and just trigger the download client scan
-	// which should pick up any completed downloads that can be imported
-	// This is safer than trying to guess folder paths
-	
-	f.logger.Debug("  → Attempting manual import via download client scan")
-	
-	// The download client scan we triggered earlier should handle this
-	// We'll consider this "successful" if we can at least trigger the scan
+
+	seriesTitle := item.Series.Title
+	f.logger.Debug("  → Attempting manual import for: %s", seriesTitle)
+
+	// Strategy 1: Try using OutputPath if available
+	if item.OutputPath != "" {
+		f.logger.Debug("  → Trying OutputPath: %s", item.OutputPath)
+		if f.tryManualImportByPath(ctx, item.OutputPath, item) {
+			f.logger.Info("  → Successfully imported using OutputPath")
+			return true
+		}
+	}
+
+	// Strategy 2: Try using DownloadID if available
+	if item.DownloadID != "" {
+		f.logger.Debug("  → Trying DownloadID: %s", item.DownloadID)
+		if f.tryManualImportByDownloadID(ctx, item.DownloadID, item) {
+			f.logger.Info("  → Successfully imported using DownloadID")
+			return true
+		}
+	}
+
+	// Strategy 3: Try using Series ID approach (scan for files matching the series)
+	f.logger.Debug("  → Trying SeriesID approach for series: %s (ID: %d)", seriesTitle, item.Series.ID)
+	if f.tryManualImportBySeriesID(ctx, item) {
+		f.logger.Info("  → Successfully imported using SeriesID approach")
+		return true
+	}
+
+	f.logger.Debug("  → All manual import strategies failed")
+	return false
+}
+
+// tryManualImportByPath attempts manual import using a specific folder path
+func (f *ImportFixer) tryManualImportByPath(ctx context.Context, folderPath string, item models.QueueItem) bool {
+	f.logger.Debug("    → Scanning folder for importable files: %s", folderPath)
+
+	// Get files available for manual import from this folder
+	manualImportItems, err := f.client.GetManualImport(ctx, folderPath)
+	if err != nil {
+		f.logger.Debug("    → Failed to get manual import items for folder %s: %s", folderPath, err.Error())
+		return false
+	}
+
+	if len(manualImportItems) == 0 {
+		f.logger.Debug("    → No importable files found in folder %s", folderPath)
+		return false
+	}
+
+	f.logger.Debug("    → Found %d potential files for import", len(manualImportItems))
+
+	// Filter files that match our queue item and series
+	matchedFiles := f.filterMatchingFiles(manualImportItems, item)
+	if len(matchedFiles) == 0 {
+		f.logger.Debug("    → No files matched the queue item criteria")
+		return false
+	}
+
+	f.logger.Debug("    → %d files matched queue item criteria", len(matchedFiles))
+
+	// Execute manual import for matched files
+	return f.executeManualImport(ctx, matchedFiles, item)
+}
+
+// tryManualImportByDownloadID attempts manual import using download ID
+func (f *ImportFixer) tryManualImportByDownloadID(ctx context.Context, downloadID string, item models.QueueItem) bool {
+	f.logger.Debug("    → Attempting manual import using downloadID: %s", downloadID)
+
+	// Use the enhanced GetManualImportWithParams method with downloadID
+	manualImportItems, err := f.client.GetManualImportWithParams(ctx, "", downloadID, 0, true)
+	if err != nil {
+		f.logger.Debug("    → Failed to get manual import items by downloadID: %s", err.Error())
+	} else if len(manualImportItems) > 0 {
+		f.logger.Debug("    → Found %d files using downloadID", len(manualImportItems))
+		matchedFiles := f.filterMatchingFiles(manualImportItems, item)
+		if len(matchedFiles) > 0 {
+			return f.executeManualImport(ctx, matchedFiles, item)
+		}
+	}
+
+	// Fallback: Try to find common download folders and search there
+	commonDownloadPaths := []string{
+		"/downloads/complete",
+		"/downloads",
+		"/mnt/downloads",
+		"/data/downloads",
+	}
+
+	for _, basePath := range commonDownloadPaths {
+		f.logger.Debug("    → Trying common download path: %s", basePath)
+		if f.tryManualImportByPath(ctx, basePath, item) {
+			return true
+		}
+	}
+
+	f.logger.Debug("    → DownloadID approach failed - no files found")
+	return false
+}
+
+// tryManualImportBySeriesID attempts manual import by scanning for series-related files
+func (f *ImportFixer) tryManualImportBySeriesID(ctx context.Context, item models.QueueItem) bool {
+	if item.Series == nil {
+		return false
+	}
+
+	f.logger.Debug("    → Attempting import using series information")
+
+	// Try series-specific paths first
+	seriesPaths := []string{
+		fmt.Sprintf("/downloads/complete/%s", item.Series.Title),
+		fmt.Sprintf("/downloads/%s", item.Series.Title),
+		fmt.Sprintf("/mnt/downloads/%s", item.Series.Title),
+	}
+
+	for _, seriesPath := range seriesPaths {
+		f.logger.Debug("    → Trying series-specific path: %s", seriesPath)
+		if f.tryManualImportByPath(ctx, seriesPath, item) {
+			return true
+		}
+	}
+
+	// If series-specific paths don't work, try generic download paths
+	// but filter more strictly by series ID
+	f.logger.Debug("    → Trying generic paths with series filtering")
+	return f.tryGenericPathsWithSeriesFiltering(ctx, item)
+}
+
+// tryGenericPathsWithSeriesFiltering tries common download paths with strict series filtering
+func (f *ImportFixer) tryGenericPathsWithSeriesFiltering(ctx context.Context, item models.QueueItem) bool {
+	// First try the enhanced method with series ID filtering
+	f.logger.Debug("    → Trying enhanced series ID filtering")
+	manualImportItems, err := f.client.GetManualImportWithParams(ctx, "", "", item.Series.ID, true)
+	if err != nil {
+		f.logger.Debug("    → Enhanced series ID filtering failed: %s", err.Error())
+	} else if len(manualImportItems) > 0 {
+		f.logger.Debug("    → Found %d files using series ID filtering", len(manualImportItems))
+		matchedFiles := f.filterFilesBySeriesID(manualImportItems, item.Series.ID)
+		if len(matchedFiles) > 0 {
+			if f.executeManualImport(ctx, matchedFiles, item) {
+				return true
+			}
+		}
+	}
+
+	// Fallback to path-based scanning
+	commonPaths := []string{
+		"/downloads/complete",
+		"/downloads",
+		"/mnt/downloads",
+		"/data/downloads",
+	}
+
+	for _, path := range commonPaths {
+		f.logger.Debug("    → Scanning %s for series %s files", path, item.Series.Title)
+
+		manualImportItems, err := f.client.GetManualImport(ctx, path)
+		if err != nil {
+			f.logger.Debug("    → Failed to scan %s: %s", path, err.Error())
+			continue
+		}
+
+		// Apply strict filtering for this series only
+		matchedFiles := f.filterFilesBySeriesID(manualImportItems, item.Series.ID)
+		if len(matchedFiles) > 0 {
+			f.logger.Debug("    → Found %d files for series in %s", len(matchedFiles), path)
+			if f.executeManualImport(ctx, matchedFiles, item) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// filterMatchingFiles filters manual import items to those matching the queue item
+func (f *ImportFixer) filterMatchingFiles(items []models.ManualImportItem, queueItem models.QueueItem) []models.ManualImportItem {
+	var matched []models.ManualImportItem
+
+	for _, item := range items {
+		// Check if file matches our series
+		if item.Series != nil && queueItem.Series != nil {
+			if item.Series.ID == queueItem.Series.ID {
+				f.logger.Debug("      → Matched file: %s (Series: %s)", item.Name, item.Series.Title)
+				matched = append(matched, item)
+			}
+		} else if queueItem.DownloadID != "" && item.DownloadID == queueItem.DownloadID {
+			// If no series match, try download ID match
+			f.logger.Debug("      → Matched file by downloadID: %s", item.Name)
+			matched = append(matched, item)
+		}
+	}
+
+	return matched
+}
+
+// filterFilesBySeriesID filters files strictly by series ID
+func (f *ImportFixer) filterFilesBySeriesID(items []models.ManualImportItem, seriesID int) []models.ManualImportItem {
+	var matched []models.ManualImportItem
+
+	for _, item := range items {
+		if item.Series != nil && item.Series.ID == seriesID {
+			matched = append(matched, item)
+		}
+	}
+
+	return matched
+}
+
+// executeManualImport executes the manual import for the given files
+func (f *ImportFixer) executeManualImport(ctx context.Context, files []models.ManualImportItem, queueItem models.QueueItem) bool {
+	if len(files) == 0 {
+		return false
+	}
+
+	f.logger.Debug("    → Executing manual import for %d files", len(files))
+
+	// Log files being imported
+	for _, file := range files {
+		seriesInfo := "Unknown Series"
+		if file.Series != nil {
+			seriesInfo = file.Series.Title
+		}
+		f.logger.Debug("      → Importing: %s (%s)", file.Name, seriesInfo)
+	}
+
+	// Execute the manual import with "move" mode (safer than copy)
+	err := f.client.ExecuteManualImport(ctx, files, "move")
+	if err != nil {
+		f.logger.Debug("    → Manual import failed: %s", err.Error())
+		return false
+	}
+
+	f.logger.Debug("    → Manual import command executed successfully")
 	return true
 }

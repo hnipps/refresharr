@@ -543,3 +543,46 @@ func (c *SonarrClient) ExecuteManualImport(ctx context.Context, files []models.M
 	c.logger.Debug("Successfully initiated manual import for %d files", len(files))
 	return nil
 }
+
+// GetManualImportWithParams gets files available for manual import with additional parameters
+func (c *SonarrClient) GetManualImportWithParams(ctx context.Context, folder, downloadID string, seriesID int, filterExisting bool) ([]models.ManualImportItem, error) {
+	// Build query parameters similar to golift.io/starr ManualImportParams
+	var params []string
+	if folder != "" {
+		params = append(params, fmt.Sprintf("folder=%s", folder))
+	}
+	if downloadID != "" {
+		params = append(params, fmt.Sprintf("downloadId=%s", downloadID))
+	}
+	if seriesID > 0 {
+		params = append(params, fmt.Sprintf("seriesId=%d", seriesID))
+	}
+	if filterExisting {
+		params = append(params, "filterExistingFiles=true")
+	}
+
+	var path string
+	if len(params) > 0 {
+		path = fmt.Sprintf("/api/v3/manualimport?%s", strings.Join(params, "&"))
+	} else {
+		path = "/api/v3/manualimport"
+	}
+
+	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch manual import items: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch manual import items, status: %d", resp.StatusCode)
+	}
+
+	var manualImportItems []models.ManualImportItem
+	if err := json.NewDecoder(resp.Body).Decode(&manualImportItems); err != nil {
+		return nil, fmt.Errorf("failed to decode manual import response: %w", err)
+	}
+
+	c.logger.Debug("Found %d manual import items with custom parameters", len(manualImportItems))
+	return manualImportItems, nil
+}
