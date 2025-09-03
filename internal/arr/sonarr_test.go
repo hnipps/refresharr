@@ -418,3 +418,107 @@ func TestSonarrClient_GetAllMovies(t *testing.T) {
 		t.Error("Expected GetAllMovies() to return nil movies for Sonarr")
 	}
 }
+
+func TestSonarrClient_RemoveFromQueue_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		expectedPath := "/api/v3/queue/12345"
+		if r.URL.Path != expectedPath {
+			t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
+		}
+		if r.Method != "DELETE" {
+			t.Errorf("Expected DELETE method, got '%s'", r.Method)
+		}
+
+		// Check query parameters
+		removeFromClient := r.URL.Query().Get("removeFromClient")
+		if removeFromClient != "true" {
+			t.Errorf("Expected removeFromClient 'true', got '%s'", removeFromClient)
+		}
+
+		blocklist := r.URL.Query().Get("blocklist")
+		if blocklist != "false" {
+			t.Errorf("Expected blocklist 'false', got '%s'", blocklist)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := &config.SonarrConfig{
+		URL:    server.URL,
+		APIKey: "test-key",
+	}
+	logger := &mockLogger{}
+
+	client := NewSonarrClient(cfg, 30*time.Second, logger)
+	ctx := context.Background()
+
+	err := client.RemoveFromQueue(ctx, 12345, true)
+	if err != nil {
+		t.Errorf("RemoveFromQueue() failed: %v", err)
+	}
+}
+
+func TestSonarrClient_RemoveFromQueue_NotFound_Success(t *testing.T) {
+	// Test that 404 responses are treated as successful (item already removed)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		expectedPath := "/api/v3/queue/12345"
+		if r.URL.Path != expectedPath {
+			t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
+		}
+		if r.Method != "DELETE" {
+			t.Errorf("Expected DELETE method, got '%s'", r.Method)
+		}
+
+		// Return 404 - item not found (already removed)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	cfg := &config.SonarrConfig{
+		URL:    server.URL,
+		APIKey: "test-key",
+	}
+	logger := &mockLogger{}
+
+	client := NewSonarrClient(cfg, 30*time.Second, logger)
+	ctx := context.Background()
+
+	err := client.RemoveFromQueue(ctx, 12345, false)
+	// 404 should NOT be treated as an error - it means the item is already gone
+	if err != nil {
+		t.Errorf("RemoveFromQueue() should not fail on 404, but got: %v", err)
+	}
+}
+
+func TestSonarrClient_RemoveFromQueue_Error(t *testing.T) {
+	// Test that other HTTP errors are still treated as failures
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		expectedPath := "/api/v3/queue/12345"
+		if r.URL.Path != expectedPath {
+			t.Errorf("Expected path '%s', got '%s'", expectedPath, r.URL.Path)
+		}
+		if r.Method != "DELETE" {
+			t.Errorf("Expected DELETE method, got '%s'", r.Method)
+		}
+
+		// Return 500 - server error (should still be treated as error)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	cfg := &config.SonarrConfig{
+		URL:    server.URL,
+		APIKey: "test-key",
+	}
+	logger := &mockLogger{}
+
+	client := NewSonarrClient(cfg, 30*time.Second, logger)
+	ctx := context.Background()
+
+	err := client.RemoveFromQueue(ctx, 12345, false)
+	// 500 should still be treated as an error
+	if err == nil {
+		t.Error("RemoveFromQueue() should fail on 500, but didn't return error")
+	}
+}

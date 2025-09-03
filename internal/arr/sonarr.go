@@ -449,10 +449,18 @@ func (c *SonarrClient) RemoveFromQueue(ctx context.Context, queueID int, removeF
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+	// Handle different status codes
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNoContent:
+		// Successfully removed
+		c.logger.Debug("Successfully removed queue item %d", queueID)
+		return nil
+	case http.StatusNotFound:
+		// Item not found - likely already removed (common with season packs)
+		// This is not an error, just means the item was already cleaned up
+		c.logger.Debug("Queue item %d not found (already removed)", queueID)
+		return nil
+	default:
 		return fmt.Errorf("failed to remove queue item %d, status: %d", queueID, resp.StatusCode)
 	}
-
-	c.logger.Debug("Successfully removed queue item %d", queueID)
-	return nil
 }
