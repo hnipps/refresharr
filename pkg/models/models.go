@@ -74,6 +74,12 @@ type QualityProfile struct {
 	Name string `json:"name"`
 }
 
+// Quality represents a quality setting
+type Quality struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
 // MovieLookup represents a movie lookup result from TMDB
 type MovieLookup struct {
 	TMDBID   int    `json:"tmdbId"`
@@ -186,6 +192,23 @@ type ImportFixResult struct {
 	Errors          []string
 	Success         bool
 	DryRun          bool
+}
+
+// ManualImportItem represents a file available for manual import
+type ManualImportItem struct {
+	ID           int      `json:"id,omitempty"`
+	Path         string   `json:"path"`
+	RelativePath string   `json:"relativePath"`
+	FolderName   string   `json:"folderName"`
+	Name         string   `json:"name"`
+	Size         int64    `json:"size"`
+	Series       *Series  `json:"series,omitempty"`
+	SeasonNumber *int     `json:"seasonNumber,omitempty"`
+	Episodes     []Episode `json:"episodes,omitempty"`
+	Quality      *Quality `json:"quality,omitempty"`
+	QualityWeight int     `json:"qualityWeight,omitempty"`
+	DownloadID   string   `json:"downloadId,omitempty"`
+	Rejections   []string `json:"rejections,omitempty"`
 }
 
 // Expected format: ...path.../Series Title (Year) [tvdb-12345]/...

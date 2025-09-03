@@ -464,3 +464,82 @@ func (c *SonarrClient) RemoveFromQueue(ctx context.Context, queueID int, removeF
 		return fmt.Errorf("failed to remove queue item %d, status: %d", queueID, resp.StatusCode)
 	}
 }
+
+// TriggerDownloadClientScan triggers a scan of completed downloads
+func (c *SonarrClient) TriggerDownloadClientScan(ctx context.Context) error {
+	command := map[string]string{
+		"name": "DownloadedEpisodesScan",
+	}
+
+	jsonData, err := json.Marshal(command)
+	if err != nil {
+		return fmt.Errorf("failed to marshal download client scan command: %w", err)
+	}
+
+	resp, err := c.makeRequest(ctx, "POST", "/api/v3/command", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to trigger download client scan: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		// For Sonarr v4+, the DownloadedEpisodesScan command may not be available
+		// This is expected and not an error - we'll fall back to other methods
+		c.logger.Debug("Download client scan command not available (likely Sonarr v4+), status: %d", resp.StatusCode)
+		return nil
+	}
+
+	c.logger.Debug("Successfully triggered download client scan")
+	return nil
+}
+
+// GetManualImport gets files available for manual import from a folder
+func (c *SonarrClient) GetManualImport(ctx context.Context, folder string) ([]models.ManualImportItem, error) {
+	path := fmt.Sprintf("/api/v3/manualimport?folder=%s&filterExistingFiles=true", folder)
+	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch manual import items for folder %s: %w", folder, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch manual import items for folder %s, status: %d", folder, resp.StatusCode)
+	}
+
+	var manualImportItems []models.ManualImportItem
+	if err := json.NewDecoder(resp.Body).Decode(&manualImportItems); err != nil {
+		return nil, fmt.Errorf("failed to decode manual import response for folder %s: %w", folder, err)
+	}
+
+	c.logger.Debug("Found %d manual import items in folder %s", len(manualImportItems), folder)
+	return manualImportItems, nil
+}
+
+// ExecuteManualImport executes manual import for the specified files
+func (c *SonarrClient) ExecuteManualImport(ctx context.Context, files []models.ManualImportItem, importMode string) error {
+	command := map[string]interface{}{
+		"name":       "ManualImport",
+		"files":      files,
+		"importMode": importMode,
+	}
+
+	jsonData, err := json.Marshal(command)
+	if err != nil {
+		return fmt.Errorf("failed to marshal manual import command: %w", err)
+	}
+
+	resp, err := c.makeRequest(ctx, "POST", "/api/v3/command", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to execute manual import: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		// Get response body for better error reporting
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to execute manual import, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	c.logger.Debug("Successfully initiated manual import for %d files", len(files))
+	return nil
+}

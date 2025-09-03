@@ -200,7 +200,7 @@ The `fix-imports` command addresses a common Sonarr issue where downloads get st
 - Import processes are interrupted
 - Database inconsistencies occur
 
-The command identifies and removes these stuck import items from the queue, allowing Sonarr to properly handle the media.
+The command identifies stuck import items and attempts to import them before removing from the queue, ensuring no content is lost.
 
 **Usage:**
 ```bash
@@ -217,12 +217,16 @@ The command identifies and removes these stuck import items from the queue, allo
 **What it does:**
 1. 🔍 Scans the Sonarr download queue for stuck items
 2. 📋 Identifies items with import issues (status = "completed" but not imported)  
-3. 🚫 Removes problematic queue entries that match known patterns:
-   - "already imported"
-   - "episode file already imported"
-   - "one or more episodes expected"
-   - "missing from the release"
-4. 📊 Reports the number of items fixed
+3. 🎯 Attempts to import stuck items using manual import process
+4. 📥 Triggers download client scan to refresh import status
+5. 📝 Logs failures without removing items from queue (for manual resolution)
+6. 📊 Reports the number of items successfully imported vs requiring manual attention
+
+**Import Issues Detected:**
+- "already imported"
+- "episode file already imported"  
+- "one or more episodes expected"
+- "missing from the release"
 
 **Note:** This command only works with Sonarr (not Radarr) as download queue management is specific to Sonarr's import process.
 

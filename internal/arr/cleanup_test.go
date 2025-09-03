@@ -148,6 +148,18 @@ func (m *mockClient) RemoveFromQueue(ctx context.Context, queueID int, removeFro
 	return nil
 }
 
+func (m *mockClient) TriggerDownloadClientScan(ctx context.Context) error {
+	return nil
+}
+
+func (m *mockClient) GetManualImport(ctx context.Context, folder string) ([]models.ManualImportItem, error) {
+	return []models.ManualImportItem{}, nil
+}
+
+func (m *mockClient) ExecuteManualImport(ctx context.Context, files []models.ManualImportItem, importMode string) error {
+	return nil
+}
+
 type mockFileChecker struct {
 	fileExists map[string]bool
 	readable   map[string]bool

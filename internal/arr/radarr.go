@@ -401,3 +401,18 @@ func (c *RadarrClient) GetQueueDetails(ctx context.Context, queueID int) (*model
 func (c *RadarrClient) RemoveFromQueue(ctx context.Context, queueID int, removeFromClient bool) error {
 	return fmt.Errorf("RemoveFromQueue is not supported by Radarr client")
 }
+
+// TriggerDownloadClientScan is not applicable for Radarr (returns error)
+func (c *RadarrClient) TriggerDownloadClientScan(ctx context.Context) error {
+	return fmt.Errorf("TriggerDownloadClientScan is not supported by Radarr client")
+}
+
+// GetManualImport is not applicable for Radarr (returns error)
+func (c *RadarrClient) GetManualImport(ctx context.Context, folder string) ([]models.ManualImportItem, error) {
+	return nil, fmt.Errorf("GetManualImport is not supported by Radarr client")
+}
+
+// ExecuteManualImport is not applicable for Radarr (returns error)  
+func (c *RadarrClient) ExecuteManualImport(ctx context.Context, files []models.ManualImportItem, importMode string) error {
+	return fmt.Errorf("ExecuteManualImport is not supported by Radarr client")
+}

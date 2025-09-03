@@ -98,25 +98,20 @@ func runFixImportsCommand(ctx context.Context, cfg *config.Config) {
 		logger.Info("🔍 Found %d stuck import(s) that would be fixed", result.TotalStuckItems)
 		logger.Info("Run without --dry-run to actually fix these imports")
 	} else if result.FixedItems > 0 {
-		logger.Info("🎉 Successfully fixed %d out of %d stuck imports!", result.FixedItems, result.TotalStuckItems)
+		logger.Info("🎉 Successfully imported %d out of %d stuck imports!", result.FixedItems, result.TotalStuckItems)
 		if len(result.Errors) > 0 {
-			logger.Warn("Some errors occurred during fixing:")
+			failedCount := result.TotalStuckItems - result.FixedItems
+			logger.Info("📝 %d items failed to import and were left in queue for manual resolution:", failedCount)
 			for _, errMsg := range result.Errors {
-				logger.Warn("  %s", errMsg)
+				logger.Info("  %s", errMsg)
 			}
+			logger.Info("Please check these items in Sonarr's Activity → Queue tab and resolve manually.")
 		}
-		logger.Info("You may want to run a manual import scan in Sonarr to pick up any remaining episodes.")
+	} else if result.TotalStuckItems > 0 {
+		logger.Info("⚠️  No items were successfully imported - all %d items remain in queue for manual resolution", result.TotalStuckItems)
+		logger.Info("Please check these items in Sonarr's Activity → Queue tab and resolve manually.")
 	} else if result.TotalStuckItems == 0 {
 		logger.Info("✨ No stuck imports found - your queue is clean!")
-	} else {
-		logger.Warn("⚠️ No imports were fixed")
-		if len(result.Errors) > 0 {
-			logger.Error("Errors occurred:")
-			for _, errMsg := range result.Errors {
-				logger.Error("  %s", errMsg)
-			}
-		}
-		os.Exit(1)
 	}
 }
 
