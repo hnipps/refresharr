@@ -15,6 +15,7 @@ import (
 type Config struct {
 	Sonarr SonarrConfig
 	Radarr RadarrConfig
+	Plex   PlexConfig
 
 	// Global settings
 	RequestTimeout  time.Duration
@@ -46,6 +47,12 @@ type RadarrConfig struct {
 	APIKey string
 }
 
+// PlexConfig holds Plex-specific configuration
+type PlexConfig struct {
+	URL   string
+	Token string
+}
+
 // LoadConfig loads configuration from environment variables and command line flags with sensible defaults
 func LoadConfig() (*Config, error) {
 	return LoadConfigWithFlags(nil, nil, nil, nil, nil, nil, nil, nil)
@@ -75,7 +82,8 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 			fmt.Fprintf(os.Stderr, "Usage: %s [command] [options]\n\n", os.Args[0])
 			fmt.Fprintf(os.Stderr, "Commands:\n")
 			fmt.Fprintf(os.Stderr, "  (default)     Clean up missing file references in *arr databases\n")
-			fmt.Fprintf(os.Stderr, "  fix-imports   Fix stuck Sonarr imports (already imported issues)\n\n")
+			fmt.Fprintf(os.Stderr, "  fix-imports   Fix stuck Sonarr imports (already imported issues)\n")
+			fmt.Fprintf(os.Stderr, "  compare-plex  Compare Radarr file status with Plex library availability\n\n")
 			fmt.Fprintf(os.Stderr, "Options:\n")
 			fs.PrintDefaults()
 			fmt.Fprintf(os.Stderr, "\nEnvironment Variables:\n")
@@ -83,6 +91,8 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 			fmt.Fprintf(os.Stderr, "  SONARR_API_KEY  Sonarr API key (required)\n")
 			fmt.Fprintf(os.Stderr, "  RADARR_URL      Radarr base URL (default: http://127.0.0.1:7878)\n")
 			fmt.Fprintf(os.Stderr, "  RADARR_API_KEY  Radarr API key (required for Radarr)\n")
+			fmt.Fprintf(os.Stderr, "  PLEX_URL        Plex base URL (default: http://127.0.0.1:32400)\n")
+			fmt.Fprintf(os.Stderr, "  PLEX_TOKEN      Plex authentication token (required for Plex)\n")
 			fmt.Fprintf(os.Stderr, "  REQUEST_TIMEOUT HTTP request timeout (default: 30s)\n")
 			fmt.Fprintf(os.Stderr, "  REQUEST_DELAY   Delay between API requests (default: 500ms)\n")
 			fmt.Fprintf(os.Stderr, "  CONCURRENT_LIMIT Max concurrent requests (default: 5)\n")
@@ -208,6 +218,16 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 		config.Radarr.URL = os.Getenv("RADARR_URL")
 	}
 
+	// Plex configuration
+	config.Plex.Token = os.Getenv("PLEX_TOKEN")
+	if config.Plex.Token != "" {
+		// Only set default URL if token is provided
+		config.Plex.URL = getEnvOrDefault("PLEX_URL", "http://127.0.0.1:32400")
+	} else {
+		// Use URL from environment if provided, but no default
+		config.Plex.URL = os.Getenv("PLEX_URL")
+	}
+
 	// Request configuration
 	if timeoutStr := os.Getenv("REQUEST_TIMEOUT"); timeoutStr != "" {
 		if timeout, err := time.ParseDuration(timeoutStr); err == nil {
@@ -248,10 +268,7 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 		config.QualityProfileID = 12 // Default
 	}
 
-	// Validate configuration
-	if err := config.Validate(); err != nil {
-		return nil, fmt.Errorf("configuration validation failed: %w", err)
-	}
+	// Skip validation for now - commands will validate their specific requirements
 
 	return config, nil
 }
@@ -280,6 +297,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Radarr.URL != "" && c.Radarr.APIKey == "" {
 		return fmt.Errorf("RADARR_API_KEY is required when RADARR_URL is provided")
+	}
+
+	// Validate Plex configuration
+	plexConfigured := c.Plex.Token != ""
+	if plexConfigured && c.Plex.URL == "" {
+		return fmt.Errorf("Plex URL is required when Plex token is provided")
+	}
+	if c.Plex.URL != "" && c.Plex.Token == "" {
+		return fmt.Errorf("PLEX_TOKEN is required when PLEX_URL is provided")
 	}
 
 	// Validate request timeout

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/hnipps/refresharr/internal/arr"
 	"github.com/hnipps/refresharr/internal/config"
 	"github.com/hnipps/refresharr/internal/filesystem"
+	"github.com/hnipps/refresharr/internal/plex"
 	"github.com/hnipps/refresharr/internal/report"
 	"github.com/hnipps/refresharr/pkg/models"
 )
@@ -28,6 +30,10 @@ func main() {
 		switch args[0] {
 		case "fix-imports":
 			command = "fix-imports"
+			// Remove command from args for flag parsing
+			os.Args = append([]string{os.Args[0]}, args[1:]...)
+		case "compare-plex":
+			command = "compare-plex"
 			// Remove command from args for flag parsing
 			os.Args = append([]string{os.Args[0]}, args[1:]...)
 		default:
@@ -54,6 +60,8 @@ func main() {
 	switch command {
 	case "fix-imports":
 		runFixImportsCommand(ctx, cfg)
+	case "compare-plex":
+		runComparePlexCommand(ctx, cfg)
 	case "cleanup":
 		runCleanupCommand(ctx, cfg)
 	default:
@@ -249,4 +257,163 @@ func determineServices(cfg *config.Config, logger arr.Logger) []ServiceInfo {
 	}
 
 	return services
+}
+
+// runComparePlexCommand handles the compare-plex command
+func runComparePlexCommand(ctx context.Context, cfg *config.Config) {
+	// Create logger
+	logger := arr.NewStandardLogger(cfg.LogLevel)
+	logger.Info("Starting RefreshArr %s - Plex Comparison Tool", version)
+
+	// Check if TMDB ID is provided as argument
+	// Since we removed the command from os.Args, the TMDB ID should be at position 0
+	args := os.Args[1:]
+	if len(args) < 1 {
+		logger.Error("TMDB ID is required as argument")
+		logger.Error("Usage: refresharr compare-plex <tmdb-id>")
+		logger.Error("Example: refresharr compare-plex 12345")
+		os.Exit(1)
+	}
+
+	// Parse TMDB ID
+	tmdbIDStr := args[0]
+	tmdbID, err := strconv.Atoi(tmdbIDStr)
+	if err != nil {
+		logger.Error("Invalid TMDB ID '%s': must be a number", tmdbIDStr)
+		os.Exit(1)
+	}
+
+	// Validate Radarr configuration
+	if cfg.Radarr.URL == "" || cfg.Radarr.APIKey == "" {
+		logger.Error("Radarr must be configured to use the compare-plex command")
+		logger.Error("Please set RADARR_URL and RADARR_API_KEY environment variables")
+		os.Exit(1)
+	}
+
+	// Validate Plex configuration
+	if cfg.Plex.URL == "" || cfg.Plex.Token == "" {
+		logger.Error("Plex must be configured to use the compare-plex command")
+		logger.Error("Please set PLEX_URL and PLEX_TOKEN environment variables")
+		os.Exit(1)
+	}
+
+	// Create Radarr client
+	radarrClient := arr.NewRadarrClient(&cfg.Radarr, cfg.RequestTimeout, logger)
+
+	// Test Radarr connection
+	if err := radarrClient.TestConnection(ctx); err != nil {
+		logger.Error("Failed to connect to Radarr: %s", err.Error())
+		os.Exit(1)
+	}
+
+	// Create Plex client
+	plexClient := plex.NewPlexClient(&cfg.Plex, cfg.RequestTimeout, logger)
+
+	// Test Plex connection
+	if err := plexClient.TestConnection(ctx); err != nil {
+		logger.Error("Failed to connect to Plex: %s", err.Error())
+		os.Exit(1)
+	}
+
+	// Get movie from Radarr by TMDB ID
+	logger.Info("🔍 Looking up movie with TMDB ID %d in Radarr...", tmdbID)
+	radarrMovie, err := radarrClient.GetMovieByTMDBID(ctx, tmdbID)
+	if err != nil {
+		logger.Error("❌ Movie with TMDB ID %d does not exist in Radarr", tmdbID)
+		os.Exit(1)
+	}
+
+	logger.Info("✅ Found movie in Radarr: %s (%d)", radarrMovie.Title, radarrMovie.Year)
+
+	// Check Radarr file status
+	radarrHasFile := radarrMovie.HasFile
+	var radarrFilePath string
+	if radarrHasFile && radarrMovie.MovieFileID != nil {
+		movieFile, err := radarrClient.GetMovieFile(ctx, *radarrMovie.MovieFileID)
+		if err != nil {
+			logger.Warn("⚠️  Could not get movie file details from Radarr: %s", err.Error())
+			radarrFilePath = "Unknown"
+		} else {
+			radarrFilePath = movieFile.Path
+		}
+	}
+
+	logger.Info("📁 Radarr file status: HasFile=%t", radarrHasFile)
+	if radarrHasFile {
+		logger.Info("📄 Radarr file path: %s", radarrFilePath)
+	}
+
+	// Get movie from Plex by TMDB ID
+	logger.Info("🔍 Looking up movie with TMDB ID %d in Plex...", tmdbID)
+	plexMovie, err := plexClient.GetMovieByTMDBID(ctx, tmdbID)
+	if err != nil {
+		logger.Warn("⚠️  Movie with TMDB ID %d not found in Plex: %s", tmdbID, err.Error())
+		
+		// Generate comparison report
+		logger.Info("\n📊 COMPARISON REPORT")
+		logger.Info("==================")
+		logger.Info("Movie: %s (%d)", radarrMovie.Title, radarrMovie.Year)
+		logger.Info("TMDB ID: %d", tmdbID)
+		logger.Info("Radarr Status: %s", getFileStatusText(radarrHasFile))
+		logger.Info("Plex Status: Not Found")
+		logger.Info("Match Status: ❌ MISMATCH - Movie not in Plex library")
+		
+		if radarrHasFile {
+			logger.Info("⚠️  Radarr shows file available but movie not found in Plex")
+			logger.Info("💡 Suggestion: Check if Plex library is scanning the correct directories")
+		}
+		return
+	}
+
+	logger.Info("✅ Found movie in Plex: %s (%d)", plexMovie.Title, plexMovie.Year)
+
+	// Check Plex availability status
+	plexAvailable := plexMovie.Available
+	logger.Info("📁 Plex availability status: Available=%t", plexAvailable)
+
+	// Generate comparison report
+	logger.Info("\n📊 COMPARISON REPORT")
+	logger.Info("==================")
+	logger.Info("Movie: %s (%d)", radarrMovie.Title, radarrMovie.Year)
+	logger.Info("TMDB ID: %d", tmdbID)
+	logger.Info("Radarr Status: %s", getFileStatusText(radarrHasFile))
+	logger.Info("Plex Status: %s", getAvailabilityStatusText(plexAvailable))
+
+	// Determine match status
+	if radarrHasFile == plexAvailable {
+		logger.Info("Match Status: ✅ MATCH - Both services agree")
+		if radarrHasFile {
+			logger.Info("🎉 Movie is available in both Radarr and Plex")
+		} else {
+			logger.Info("📭 Movie is not available in either service")
+		}
+	} else {
+		logger.Info("Match Status: ❌ MISMATCH - Services disagree")
+		if radarrHasFile && !plexAvailable {
+			logger.Info("⚠️  Radarr shows file available but Plex shows unavailable")
+			logger.Info("💡 Suggestion: Check if Plex needs to refresh its library")
+			if radarrFilePath != "" {
+				logger.Info("📄 Check file at: %s", radarrFilePath)
+			}
+		} else if !radarrHasFile && plexAvailable {
+			logger.Info("⚠️  Plex shows movie available but Radarr shows no file")
+			logger.Info("💡 Suggestion: Check if Radarr needs to scan for existing files")
+		}
+	}
+}
+
+// getFileStatusText returns a human-readable file status
+func getFileStatusText(hasFile bool) string {
+	if hasFile {
+		return "File Available"
+	}
+	return "No File"
+}
+
+// getAvailabilityStatusText returns a human-readable availability status
+func getAvailabilityStatusText(available bool) string {
+	if available {
+		return "Available"
+	}
+	return "Not Available"
 }
