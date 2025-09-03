@@ -129,8 +129,19 @@ func mapSonarrQueueRecordToModels(qr *sonarr.QueueRecord) models.QueueItem {
 	}
 
 	var series *models.Series
-	// Note: In newer versions of starr, QueueRecord may not have direct Series access
-	// We'll leave this nil for now - the queue item will work without series info
+	// Try to extract series information from QueueRecord
+	// Check if SeriesID field exists and is not zero
+	if qr.SeriesID != 0 {
+		// Create a minimal Series object with the available information
+		series = &models.Series{
+			MediaItem: models.MediaItem{
+				ID: int(qr.SeriesID),
+				// We don't have series title from QueueRecord alone
+				// The manual import process can work with just the ID
+				Title: "", // Will be populated by other means if needed
+			},
+		}
+	}
 
 	// Map status messages
 	var statusMessages []models.StatusMessage
