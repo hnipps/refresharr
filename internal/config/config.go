@@ -72,7 +72,10 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 		// Set custom usage function
 		fs.Usage = func() {
 			fmt.Fprintf(os.Stderr, "RefreshArr - Missing File Cleanup Service\n\n")
-			fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "Usage: %s [command] [options]\n\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "Commands:\n")
+			fmt.Fprintf(os.Stderr, "  (default)     Clean up missing file references in *arr databases\n")
+			fmt.Fprintf(os.Stderr, "  fix-imports   Fix stuck Sonarr imports (already imported issues)\n\n")
 			fmt.Fprintf(os.Stderr, "Options:\n")
 			fs.PrintDefaults()
 			fmt.Fprintf(os.Stderr, "\nEnvironment Variables:\n")
@@ -92,6 +95,8 @@ func LoadConfigWithFlags(dryRun, noReport, showVersion *bool, logLevel, service,
 			fmt.Fprintf(os.Stderr, "  %s --service sonarr --series-ids '123,456,789'\n", os.Args[0])
 			fmt.Fprintf(os.Stderr, "  %s --sonarr-url 'http://192.168.1.100:8989' --sonarr-api-key 'your-key'\n", os.Args[0])
 			fmt.Fprintf(os.Stderr, "  %s --log-level DEBUG\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "  %s fix-imports --dry-run\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "  %s fix-imports --sonarr-url 'http://192.168.1.100:8989' --sonarr-api-key 'your-key'\n", os.Args[0])
 		}
 
 		// Parse flags (only if we're not in test mode)

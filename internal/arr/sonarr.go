@@ -389,3 +389,70 @@ func (c *SonarrClient) LookupSeriesByTVDBID(ctx context.Context, tvdbID int) (*m
 
 	return nil, fmt.Errorf("series with TVDB ID %d not found in lookup results", tvdbID)
 }
+
+// GetQueue returns all items in the download queue
+func (c *SonarrClient) GetQueue(ctx context.Context) ([]models.QueueItem, error) {
+	resp, err := c.makeRequest(ctx, "GET", "/api/v3/queue", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch queue: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch queue, status: %d", resp.StatusCode)
+	}
+
+	var queueResponse models.QueueResponse
+	if err := json.NewDecoder(resp.Body).Decode(&queueResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode queue response: %w", err)
+	}
+
+	c.logger.Debug("Fetched %d items from queue", len(queueResponse.Records))
+	return queueResponse.Records, nil
+}
+
+// GetQueueDetails returns detailed information about a specific queue item
+func (c *SonarrClient) GetQueueDetails(ctx context.Context, queueID int) (*models.QueueItem, error) {
+	path := fmt.Sprintf("/api/v3/queue/%d", queueID)
+	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch queue details for ID %d: %w", queueID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("queue item %d not found", queueID)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch queue details for ID %d, status: %d", queueID, resp.StatusCode)
+	}
+
+	var queueItem models.QueueItem
+	if err := json.NewDecoder(resp.Body).Decode(&queueItem); err != nil {
+		return nil, fmt.Errorf("failed to decode queue details response for ID %d: %w", queueID, err)
+	}
+
+	return &queueItem, nil
+}
+
+// RemoveFromQueue removes an item from the queue
+func (c *SonarrClient) RemoveFromQueue(ctx context.Context, queueID int, removeFromClient bool) error {
+	path := fmt.Sprintf("/api/v3/queue/%d", queueID)
+
+	// Construct query parameters
+	params := fmt.Sprintf("?removeFromClient=%t&blocklist=false", removeFromClient)
+
+	resp, err := c.makeRequest(ctx, "DELETE", path+params, nil)
+	if err != nil {
+		return fmt.Errorf("failed to remove queue item %d: %w", queueID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("failed to remove queue item %d, status: %d", queueID, resp.StatusCode)
+	}
+
+	c.logger.Debug("Successfully removed queue item %d", queueID)
+	return nil
+}

@@ -70,6 +70,11 @@ type Client interface {
 	AddSeries(ctx context.Context, series models.Series) (*models.Series, error)
 
 	TriggerRefresh(ctx context.Context) error
+
+	// Queue management methods (primarily for Sonarr import fixing)
+	GetQueue(ctx context.Context) ([]models.QueueItem, error)
+	GetQueueDetails(ctx context.Context, queueID int) (*models.QueueItem, error)
+	RemoveFromQueue(ctx context.Context, queueID int, removeFromClient bool) error
 }
 
 // FileChecker defines the interface for file system operations

@@ -386,3 +386,18 @@ func (c *RadarrClient) GetSeriesByTVDBID(ctx context.Context, tvdbID int) (*mode
 func (c *RadarrClient) LookupSeriesByTVDBID(ctx context.Context, tvdbID int) (*models.SeriesLookup, error) {
 	return nil, fmt.Errorf("LookupSeriesByTVDBID is not supported by Radarr client")
 }
+
+// GetQueue is not applicable for Radarr (returns error)
+func (c *RadarrClient) GetQueue(ctx context.Context) ([]models.QueueItem, error) {
+	return nil, fmt.Errorf("GetQueue is not supported by Radarr client")
+}
+
+// GetQueueDetails is not applicable for Radarr (returns error)
+func (c *RadarrClient) GetQueueDetails(ctx context.Context, queueID int) (*models.QueueItem, error) {
+	return nil, fmt.Errorf("GetQueueDetails is not supported by Radarr client")
+}
+
+// RemoveFromQueue is not applicable for Radarr (returns error)
+func (c *RadarrClient) RemoveFromQueue(ctx context.Context, queueID int, removeFromClient bool) error {
+	return fmt.Errorf("RemoveFromQueue is not supported by Radarr client")
+}

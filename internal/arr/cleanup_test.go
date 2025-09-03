@@ -136,6 +136,18 @@ func (m *mockClient) LookupSeriesByTVDBID(ctx context.Context, tvdbID int) (*mod
 	return nil, errors.New("LookupSeriesByTVDBID not implemented in mock")
 }
 
+func (m *mockClient) GetQueue(ctx context.Context) ([]models.QueueItem, error) {
+	return []models.QueueItem{}, nil
+}
+
+func (m *mockClient) GetQueueDetails(ctx context.Context, queueID int) (*models.QueueItem, error) {
+	return &models.QueueItem{}, nil
+}
+
+func (m *mockClient) RemoveFromQueue(ctx context.Context, queueID int, removeFromClient bool) error {
+	return nil
+}
+
 type mockFileChecker struct {
 	fileExists map[string]bool
 	readable   map[string]bool

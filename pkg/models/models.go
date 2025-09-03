@@ -157,7 +157,37 @@ func ParseTMDBIDFromPath(filePath string) (int, error) {
 	return tmdbID, nil
 }
 
-// ParseTVDBIDFromPath extracts TVDB ID from a file path
+// QueueItem represents an item in the download queue
+type QueueItem struct {
+	ID             int             `json:"id"`
+	Title          string          `json:"title"`
+	Series         *Series         `json:"series,omitempty"`
+	Status         string          `json:"status"`
+	StatusMessages []StatusMessage `json:"statusMessages,omitempty"`
+	ErrorMessage   string          `json:"errorMessage,omitempty"`
+	Size           int64           `json:"size,omitempty"`
+}
+
+// StatusMessage represents a status message in the queue
+type StatusMessage struct {
+	Title    string   `json:"title"`
+	Messages []string `json:"messages,omitempty"`
+}
+
+// QueueResponse represents the API response from the queue endpoint
+type QueueResponse struct {
+	Records []QueueItem `json:"records"`
+}
+
+// ImportFixResult represents the result of an import fix operation
+type ImportFixResult struct {
+	TotalStuckItems int
+	FixedItems      int
+	Errors          []string
+	Success         bool
+	DryRun          bool
+}
+
 // Expected format: ...path.../Series Title (Year) [tvdb-12345]/...
 func ParseTVDBIDFromPath(filePath string) (int, error) {
 	// Use regex to find tvdb-### pattern
@@ -175,3 +205,5 @@ func ParseTVDBIDFromPath(filePath string) (int, error) {
 
 	return tvdbID, nil
 }
+
+// ParseTVDBIDFromPath extracts TVDB ID from a file path

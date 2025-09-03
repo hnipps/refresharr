@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/hnipps/refresharr/internal/arr"
 	"github.com/hnipps/refresharr/internal/config"
@@ -19,6 +20,23 @@ var version = "dev"
 func main() {
 	ctx := context.Background()
 
+	// Determine command - check if first argument is a known command
+	args := os.Args[1:]
+	var command string
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		// First arg doesn't start with "-", could be a command
+		switch args[0] {
+		case "fix-imports":
+			command = "fix-imports"
+			// Remove command from args for flag parsing
+			os.Args = append([]string{os.Args[0]}, args[1:]...)
+		default:
+			command = "cleanup" // Default command
+		}
+	} else {
+		command = "cleanup" // Default command
+	}
+
 	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -32,6 +50,78 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Route to appropriate command handler
+	switch command {
+	case "fix-imports":
+		runFixImportsCommand(ctx, cfg)
+	case "cleanup":
+		runCleanupCommand(ctx, cfg)
+	default:
+		log.Fatalf("Unknown command: %s", command)
+	}
+}
+
+// runFixImportsCommand handles the fix-imports command
+func runFixImportsCommand(ctx context.Context, cfg *config.Config) {
+	// Create logger
+	logger := arr.NewStandardLogger(cfg.LogLevel)
+	logger.Info("Starting RefreshArr %s - Sonarr Import Fixer", version)
+
+	// Only Sonarr is supported for import fixing
+	if cfg.Sonarr.URL == "" || cfg.Sonarr.APIKey == "" {
+		logger.Error("Sonarr must be configured to use the fix-imports command")
+		logger.Error("Please set SONARR_URL and SONARR_API_KEY environment variables or use CLI flags")
+		os.Exit(1)
+	}
+
+	// Create Sonarr client
+	client := arr.NewSonarrClient(&cfg.Sonarr, cfg.RequestTimeout, logger)
+
+	// Test connection
+	if err := client.TestConnection(ctx); err != nil {
+		logger.Error("Failed to connect to Sonarr: %s", err.Error())
+		os.Exit(1)
+	}
+
+	// Create import fixer
+	importFixer := arr.NewImportFixer(client, logger, cfg.DryRun)
+
+	// Run the import fixer
+	result, err := importFixer.FixImports(ctx, true) // removeFromClient = true by default
+	if err != nil {
+		logger.Error("Import fixer failed: %s", err.Error())
+		os.Exit(1)
+	}
+
+	// Report results
+	if result.DryRun && result.TotalStuckItems > 0 {
+		logger.Info("🔍 Found %d stuck import(s) that would be fixed", result.TotalStuckItems)
+		logger.Info("Run without --dry-run to actually fix these imports")
+	} else if result.FixedItems > 0 {
+		logger.Info("🎉 Successfully fixed %d out of %d stuck imports!", result.FixedItems, result.TotalStuckItems)
+		if len(result.Errors) > 0 {
+			logger.Warn("Some errors occurred during fixing:")
+			for _, errMsg := range result.Errors {
+				logger.Warn("  %s", errMsg)
+			}
+		}
+		logger.Info("You may want to run a manual import scan in Sonarr to pick up any remaining episodes.")
+	} else if result.TotalStuckItems == 0 {
+		logger.Info("✨ No stuck imports found - your queue is clean!")
+	} else {
+		logger.Warn("⚠️ No imports were fixed")
+		if len(result.Errors) > 0 {
+			logger.Error("Errors occurred:")
+			for _, errMsg := range result.Errors {
+				logger.Error("  %s", errMsg)
+			}
+		}
+		os.Exit(1)
+	}
+}
+
+// runCleanupCommand handles the default cleanup command
+func runCleanupCommand(ctx context.Context, cfg *config.Config) {
 	// Create logger
 	logger := arr.NewStandardLogger(cfg.LogLevel)
 	logger.Info("Starting RefreshArr %s - Missing File Cleanup Service", version)
@@ -71,6 +161,7 @@ func main() {
 
 		// Run cleanup (with series filtering if applicable)
 		var result *models.CleanupResult
+		var err error
 		if serviceInfo.Name == "sonarr" && len(cfg.SeriesIDs) > 0 {
 			// Filter to specific series for Sonarr
 			result, err = cleanupService.CleanupMissingFilesForSeries(ctx, cfg.SeriesIDs)

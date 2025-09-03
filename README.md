@@ -30,6 +30,7 @@ The service automatically:
 - ✅ **Selective Processing**: Process specific series or movies by ID
 - ✅ **Missing Files Report**: Generate detailed JSON and terminal reports of missing files
 - ✅ **Broken Symlink Detection**: Scan Radarr root directories for broken symlinks and automatically add missing movies to collection
+- ✅ **Import Fixer**: Automatically resolve stuck Sonarr import issues (already imported episodes)
 
 ### Planned (Future)
 - 🔄 **Web UI**: Browser-based interface for easier management
@@ -143,8 +144,11 @@ RefreshArr can automatically detect broken symlinks in your Radarr and Sonarr ro
 export SONARR_API_KEY="your-sonarr-api-key-here"
 export RADARR_API_KEY="your-radarr-api-key-here"
 
-# Run cleanup for all configured services
+# Run cleanup for all configured services (default)
 ./refresharr
+
+# Fix stuck Sonarr imports (already imported issues)
+./refresharr fix-imports
 
 # Run cleanup for specific service only
 ./refresharr --service sonarr
@@ -179,7 +183,48 @@ export RADARR_API_KEY="your-radarr-api-key-here"
 
 # Show version
 ./refresharr --version
+
+# Fix stuck Sonarr imports (dry run)
+./refresharr fix-imports --dry-run
+
+# Fix stuck Sonarr imports (actually remove them)
+./refresharr fix-imports
 ```
+
+### Fix-Imports Command
+
+The `fix-imports` command addresses a common Sonarr issue where downloads get stuck in the queue with "already imported" or similar import errors. This typically happens when:
+
+- Episodes are manually imported outside of Sonarr
+- Files are moved or reorganized after download
+- Import processes are interrupted
+- Database inconsistencies occur
+
+The command identifies and removes these stuck import items from the queue, allowing Sonarr to properly handle the media.
+
+**Usage:**
+```bash
+# Preview stuck imports (recommended first step)
+./refresharr fix-imports --dry-run
+
+# Actually fix the stuck imports
+./refresharr fix-imports
+
+# Fix imports with custom Sonarr configuration
+./refresharr fix-imports --sonarr-url "http://custom:8989" --sonarr-api-key "your-key"
+```
+
+**What it does:**
+1. 🔍 Scans the Sonarr download queue for stuck items
+2. 📋 Identifies items with import issues (status = "completed" but not imported)  
+3. 🚫 Removes problematic queue entries that match known patterns:
+   - "already imported"
+   - "episode file already imported"
+   - "one or more episodes expected"
+   - "missing from the release"
+4. 📊 Reports the number of items fixed
+
+**Note:** This command only works with Sonarr (not Radarr) as download queue management is specific to Sonarr's import process.
 
 ### Docker Usage (Future)
 
