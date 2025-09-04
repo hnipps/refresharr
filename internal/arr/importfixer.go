@@ -242,11 +242,23 @@ func (f *ImportFixer) attemptManualImport(ctx context.Context, item models.Queue
 }
 
 // tryManualImportByPath attempts manual import using a specific folder path
+// tryManualImportByPath attempts manual import using a specific folder path
 func (f *ImportFixer) tryManualImportByPath(ctx context.Context, folderPath string, item models.QueueItem) bool {
 	f.logger.Debug("    → Scanning folder for importable files: %s", folderPath)
 
 	// Get files available for manual import from this folder
-	manualImportItems, err := f.client.GetManualImport(ctx, folderPath)
+	// Use GetManualImportWithParams to provide series context when available
+	var manualImportItems []models.ManualImportItem
+	var err error
+
+	if item.Series != nil && item.Series.ID > 0 {
+		// Use series ID for better context when available
+		manualImportItems, err = f.client.GetManualImportWithParams(ctx, folderPath, "", item.Series.ID, true)
+	} else {
+		// Fall back to basic folder scan if no series context available
+		manualImportItems, err = f.client.GetManualImport(ctx, folderPath)
+	}
+
 	if err != nil {
 		f.logger.Debug("    → Failed to get manual import items for folder %s: %s", folderPath, err.Error())
 		return false
@@ -336,6 +348,7 @@ func (f *ImportFixer) tryManualImportBySeriesID(ctx context.Context, item models
 }
 
 // tryGenericPathsWithSeriesFiltering tries common download paths with strict series filtering
+// tryGenericPathsWithSeriesFiltering tries common download paths with strict series filtering
 func (f *ImportFixer) tryGenericPathsWithSeriesFiltering(ctx context.Context, item models.QueueItem) bool {
 	// First try the enhanced method with series ID filtering
 	f.logger.Debug("    → Trying enhanced series ID filtering")
@@ -352,7 +365,7 @@ func (f *ImportFixer) tryGenericPathsWithSeriesFiltering(ctx context.Context, it
 		}
 	}
 
-	// Fallback to path-based scanning
+	// Fallback to path-based scanning with series context
 	commonPaths := []string{
 		"/downloads/complete",
 		"/downloads",
@@ -363,7 +376,18 @@ func (f *ImportFixer) tryGenericPathsWithSeriesFiltering(ctx context.Context, it
 	for _, path := range commonPaths {
 		f.logger.Debug("    → Scanning %s for series %s files", path, item.Series.Title)
 
-		manualImportItems, err := f.client.GetManualImport(ctx, path)
+		// Use GetManualImportWithParams to provide series context
+		var manualImportItems []models.ManualImportItem
+		var err error
+
+		if item.Series != nil && item.Series.ID > 0 {
+			// Use series ID for better context when available
+			manualImportItems, err = f.client.GetManualImportWithParams(ctx, path, "", item.Series.ID, true)
+		} else {
+			// Fall back to basic folder scan if no series context available
+			manualImportItems, err = f.client.GetManualImport(ctx, path)
+		}
+
 		if err != nil {
 			f.logger.Debug("    → Failed to scan %s: %s", path, err.Error())
 			continue
